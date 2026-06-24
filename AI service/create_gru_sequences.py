@@ -3,14 +3,12 @@ import numpy as np
 import pandas as pd
 import config
 
-# from sklearn.preprocessing import StandardScaler
-
 def main():
     baseline_path = os.path.join(config.OUTPUT_DIR, "grape_baseline_merged.csv")
     followup_path = os.path.join(config.OUTPUT_DIR, "grape_followup_merged.csv")
     
-    output_x_path = os.path.join(config.OUTPUT_DIR, "X_lstm.npy")
-    output_y_path = os.path.join(config.OUTPUT_DIR, "y_lstm.npy")
+    output_x_path = os.path.join(config.OUTPUT_DIR, "X_gru.npy")
+    output_y_path = os.path.join(config.OUTPUT_DIR, "y_gru.npy")
 
     if not os.path.exists(baseline_path) or not os.path.exists(followup_path):
         print("[GREŠKA] Prvo moraš pokrenuti prethodni korak (merge_grape_data.py)!")
@@ -37,9 +35,6 @@ def main():
     df_all = df_all.sort_values(by=["Subject Number", "Laterality", "Visit Number"]).reset_index(drop=True)
 
     print("-> Skaliranje kliničkih obeležja pomoću StandardScaler-a...")
-    
-    # scaler = StandardScaler()
-    # df_all[features_list] = scaler.fit_transform(df_all[features_list])
 
     print("-> Kreiranje hronoloških sekvenci po pacijentima...")
     X_sequences = []
@@ -76,8 +71,8 @@ def main():
     print(f"Ukupan broj sekvenci (pacijenti-oči): {X.shape[0]}")
     print(f"Maksimalan broj vremenskih koraka:    {X.shape[1]}")
     print(f"Broj kliničkih obeležja po koraku:    {X.shape[2]}")
-    print(f"Konačni oblik ulaza X za LSTM:        {X.shape} -> [Batch, Time_Steps, Features]")
-    print(f"Konačni oblik izlaza y za LSTM:       {y.shape} -> [Batch]")
+    print(f"Konačni oblik ulaza X za GRU:        {X.shape} -> [Batch, Time_Steps, Features]")
+    print(f"Konačni oblik izlaza y za GRU:       {y.shape} -> [Batch]")
     print(f"Fajlovi uspešno sačuvani u 'outputs/' folderu.")
     print("========================================================")
 

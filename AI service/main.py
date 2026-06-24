@@ -3,7 +3,7 @@ import time
 
 import extract_grape_features
 import merge_grape_data
-import create_lstm_sequences
+import create_gru_sequences
 import train
 
 def main():
@@ -31,16 +31,16 @@ def main():
 
     print("\n" + "-"*50 + "\n")
 
-    print("[KORAK 3/4] Pokretanje kreiranja 3D hronoloških sekvenci za LSTM...")
+    print("[KORAK 3/4] Pokretanje kreiranja 3D hronoloških sekvenci za GRU...")
     try:
-        create_lstm_sequences.main()
+        create_gru_sequences.main()
     except Exception as e:
         print(f"\n[KRIZNA GREŠKA] Korak 3 je pukao: {str(e)}")
         sys.exit(1)
 
     print("\n" + "-"*50 + "\n")
 
-    print("[KORAK 4/4] Pokretanje obuke duboke LSTM mreže...")
+    print("[KORAK 4/4] Pokretanje obuke duboke GRU mreže...")
     try:
         train.main()
     except Exception as e:

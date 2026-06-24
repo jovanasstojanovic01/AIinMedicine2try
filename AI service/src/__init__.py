@@ -1,3 +1,3 @@
-from .model import GlaucomaProgressionLSTM
+from .model import GlaucomaProgressionGRU
 from .dataset import GlaucomaTemporalDataset
 from .losses import GlaucomaProgressionLoss
