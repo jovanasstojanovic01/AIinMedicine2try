@@ -1,0 +1,57 @@
+// 1. SVI @use uvozi na samom vrhu
+@use '@angular/material' as mat;
+
+// 2. Inicijalizacija Angular Material jezgra
+@include mat.core();
+
+// 3. Definisanje teme (Najjednostavniji i najčistiji M3 sistem)
+$my-theme: mat.define-theme((
+  color: (
+    theme-type: light,
+    primary: mat.$cyan-palette,     // Profesionalna plavo-zelena za medicinu
+    tertiary: mat.$orange-palette,  // Narandžasta za upozorenja i markere na oku
+  ),
+  density: (
+    scale: 0,
+  ),
+));
+
+// 4. Primena osnovne (svetle) teme na ceo HTML
+html {
+  height: 100%;
+  @include mat.theme($my-theme);
+}
+
+// 5. Globalno podešavanje za BODY (Light Mode)
+body {
+  margin: 0;
+  height: 100%;
+  color-scheme: light;
+  
+  background-color: var(--mat-sys-surface);
+  color: var(--mat-sys-on-surface);
+  font: var(--mat-sys-body-medium);
+  font-family: Roboto, "Helvetica Neue", sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+// 6. Podešavanje za TAMNU TEMU - Kada body dobije klasu .dark-theme
+body.dark-theme {
+  color-scheme: dark;
+  
+  // Ubacujemo tamnu M3 temu direktno na nivo tela aplikacije
+  @include mat.theme((
+    color: (
+      theme-type: dark,
+      primary: mat.$cyan-palette,
+      tertiary: mat.$orange-palette,
+    ),
+    density: (
+      scale: 0,
+    ),
+  ));
+  
+  // Prilagođavanje tamne pozadine za lekarsku ordinaciju i eksplicitno osvežavanje varijabli
+  background-color: #121414 !important; 
+  color: var(--mat-sys-on-surface) !important;
+}

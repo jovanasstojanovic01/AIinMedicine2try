@@ -1,0 +1,209 @@
+.patient-detail-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.patient-header-card {
+  padding: 16px 24px;
+  border-radius: 8px;
+}
+
+.patient-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  
+  h2, p { margin: 0; }
+  small { opacity: 0.6; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px; }
+}
+
+.split-layout {
+  display: flex;
+  gap: 24px;
+}
+
+.timeline-panel {
+  flex: 3;
+  h3 { margin-bottom: 12px; font-weight: 500; }
+}
+
+// Stilovi za istoriju pregleda sa slike image_7be9d9.png
+// .timeline-panel {
+//   h3 {
+//     margin: 0 0 16px 0;
+//     font-size: 16px;
+//     font-weight: 500;
+//     text-transform: uppercase;
+//     letter-spacing: 0.5px;
+//     color: #444;
+//   }
+// }
+
+// Popravka i stilizacija Angular Material liste
+// Fokusiramo se isključivo na veličinu, padding i razmake (za dark/light kompatibilnost)
+.timeline-item {
+  margin-bottom: 16px; // Razmak između kartica
+  cursor: pointer;
+  transition: transform 0.2s ease-in-out;
+  
+  // Geometrija i definisanje prostora
+  min-height: 85px !important; 
+  height: auto !important;
+
+  // 1. Prostor za ikonicu (Levo)
+  ::v-deep .mdc-list-item__start {
+    margin-left: 16px !important;  // Uvlačenje od leve ivice kartice
+    margin-right: 20px !important; // Razmak od ikonice do teksta
+    align-self: center;            // Vertikalno centriranje
+  }
+
+  // 2. Ključni padding za tekst (Sredina)
+  ::v-deep .mdc-list-item__content {
+    padding: 16px 0 !important;    // Vertikalni prostor (gore/dole) da tekst "prodiše"
+    display: flex;
+    flex-direction: column;
+    gap: 6px !important;           // Čist razmak između naslova i datuma
+    justify-content: center;
+  }
+
+  // 3. Prostor za radio dugme (Desno)
+  ::v-deep .mdc-list-item__end {
+    margin-left: auto !important;
+    padding-right: 20px !important; // Uvlačenje od desne ivice kartice
+    align-self: center;
+  }
+
+  // Efekat podizanja na hover (radi podjednako dobro u obe teme)
+  &:hover {
+    transform: translateY(-2px);
+  }
+}
+
+// Tekstualni stilovi bez fiksnih boja (koriste nasleđene boje iz teme)
+.timeline-title {
+  font-size: 15px;
+  font-weight: 500;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.timeline-sub {
+  font-size: 13px;
+  font-weight: 400;
+  margin: 0;
+  opacity: 0.7; // Umesto fiksne sive, koristimo prozirnost koja radi i na tamnoj i na svetloj pozadini
+}
+
+.details-panel {
+  flex: 7;
+}
+
+.display-card {
+  padding: 24px;
+  border-radius: 8px;
+}
+
+.details-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+  h3 { margin: 0; font-weight: 500; }
+}
+
+// KLJUČNO: Stilovi za Side-by-side slike i masku preko slike
+.eye-images-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.image-container {
+  text-align: center;
+  h4 { margin: 0 0 12px 0; font-weight: 500; opacity: 0.9; }
+  
+  .wrapper {
+    position: relative; // Omogućava apsolutno pozicioniranje maske unutar ovoga
+    width: 100%;
+    aspect-ratio: 4/3;
+    border-radius: 8px;
+    overflow: hidden;
+    background-color: #000;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+
+    img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    // Poluprovidna maska koja se lepi preko slike
+    .image-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      mix-blend-mode: multiply; // Čini da se maska lepo stapa sa strukturama oka
+      transition: all 0.3s ease;
+
+      .overlay-label {
+        background: rgba(0,0,0,0.75);
+        color: #fff;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+      }
+      
+      &.alert {
+        // Efekat pulsiranja za rizične zone glaukoma
+        border: 4px solid var(--mat-sys-tertiary);
+        box-sizing: border-box;
+      }
+    }
+  }
+}
+
+.params {
+  display: flex;
+  justify-content: space-around;
+  background: rgba(128, 128, 128, 0.05);
+  padding: 10px;
+  border-radius: 0 0 8px 8px;
+  margin-top: 4px;
+  p { margin: 0; font-size: 14px; }
+}
+
+.medical-report {
+  background: rgba(128, 128, 128, 0.03);
+  padding: 16px;
+  border-radius: 6px;
+  border-left: 4px solid var(--mat-sys-primary);
+  h4 { margin: 0 0 8px 0; font-weight: 500; }
+  .report-text { margin: 0; line-height: 1.6; font-size: 14px; }
+}
+
+.text-danger { color: #e53935; }
+.text-warn { color: #f57c00; }
+
+.badge {
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(128,128,128,0.15);
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+@media (max-width: 900px) {
+  .split-layout, .eye-images-grid { flex-direction: column; grid-template-columns: 1fr; }
+}

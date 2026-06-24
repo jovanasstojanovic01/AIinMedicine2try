@@ -1,0 +1,78 @@
+<div class="dashboard-container">
+  
+  <div class="main-content">
+    <mat-card class="table-card">
+      <div class="card-header">
+        <h2>Istorija svih pregleda u klinici</h2>
+        
+        <mat-form-field appearance="outline" class="search-field">
+            <mat-label>Pretraži pacijenta (Ime ili JMBG)</mat-label>
+            <input matInput #searchField [(ngModel)]="searchQuery" placeholder="Npr. Marko Nikolić">
+            <mat-icon matSuffix>search</mat-icon>
+        </mat-form-field>
+      </div>
+
+      <table mat-table [dataSource]="filteredExaminations" class="mat-elevation-z0">
+        
+        <ng-container matColumnDef="datum">
+          <th mat-header-cell *matHeaderCellDef> Datum </th>
+          <td mat-cell *matCellDef="let element"> {{element.datum}} </td>
+        </ng-container>
+
+        <ng-container matColumnDef="imePrezime">
+          <th mat-header-cell *matHeaderCellDef> Pacijent </th>
+          <td mat-cell *matCellDef="let element" class="patient-name"> {{element.imePrezime}} </td>
+        </ng-container>
+
+        <ng-container matColumnDef="jmbg">
+          <th mat-header-cell *matHeaderCellDef> JMBG </th>
+          <td mat-cell *matCellDef="let element"> {{element.jmbg}} </td>
+        </ng-container>
+
+        <ng-container matColumnDef="tipPregleda">
+          <th mat-header-cell *matHeaderCellDef> Tip </th>
+          <td mat-cell *matCellDef="let element"> 
+            <span class="badge" [ngClass]="element.tipPregleda === 'Inicijalni' ? 'badge-primary' : 'badge-secondary'">
+              {{element.tipPregleda}}
+            </span>
+          </td>
+        </ng-container>
+
+        <ng-container matColumnDef="status">
+          <th mat-header-cell *matHeaderCellDef> Dijagnoza </th>
+          <td mat-cell *matCellDef="let element"> {{element.status}} </td>
+        </ng-container>
+
+        <ng-container matColumnDef="akcija">
+          <th mat-header-cell *matHeaderCellDef> Karton </th>
+          <td mat-cell *matCellDef="let element">
+            <button mat-icon-button color="primary" [routerLink]="['/patient', element.pacijentId]" title="Otvori karton pacijenta">
+              <mat-icon>account_box</mat-icon>
+            </button>
+          </td>
+        </ng-container>
+
+        <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+        <tr mat-row *matRowDef="let row; columns: displayedColumns;"></tr>
+      </table>
+    </mat-card>
+  </div>
+
+  <div class="side-panel">
+    <mat-card class="actions-card">
+      <h3>Brze Akcije</h3>
+      <p class="text-muted">Pokrenite novi pregled ili otvorite karton direktno.</p>
+      
+      <button mat-raised-button color="primary" class="action-btn" routerLink="/new-examination">
+        <mat-icon>add_circle</mat-icon>
+        Novi Pacijent / Prvi pregled
+      </button>
+
+      <button mat-stroked-button color="primary" class="action-btn" (click)="searchField.focus()">
+        <mat-icon>loop</mat-icon>
+        Započni redovnu kontrolu
+      </button>
+    </mat-card>
+  </div>
+
+</div>

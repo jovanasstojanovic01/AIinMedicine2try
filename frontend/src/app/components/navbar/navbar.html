@@ -1,0 +1,12 @@
+<mat-toolbar [color]="isDarkTheme ? null : 'primary'" class="navbar-shadow">
+  <span routerLink="/" class="app-logo">
+    <mat-icon class="logo-icon">visibility</mat-icon>
+    OftaScan <small>| Glaucoma Analysis</small>
+  </span>
+
+  <span class="spacer"></span>
+
+  <button mat-icon-button (click)="toggleTheme()" title="Promeni temu">
+    <mat-icon>{{ isDarkTheme ? 'light_mode' : 'dark_mode' }}</mat-icon>
+  </button>
+</mat-toolbar>

@@ -1,0 +1,97 @@
+<div class="patient-detail-container">
+  
+  <mat-card class="patient-header-card">
+    <div class="patient-info-grid">
+      <div>
+        <small>Pacijent (GRAPE Protokol)</small>
+        <h2>{{ pacijent.ime }} ({{ pacijent.godiste }})</h2>
+      </div>
+      <div>
+        <small>JMBG</small>
+        <p>{{ pacijent.jmbg }}</p>
+      </div>
+      <div>
+        <small>Glavna Dijagnoza</small>
+        <p class="text-warn"><strong>{{ pacijent.dijagnoza }}</strong></p>
+      </div>
+      <div>
+        <small>Kratka napomena</small>
+        <p>{{ pacijent.napomena }}</p>
+      </div>
+    </div>
+  </mat-card>
+
+  <div class="split-layout">
+    
+    <div class="timeline-panel">
+      <h3>Istorija pregleda</h3>
+      <mat-selection-list [multiple]="false">
+        <mat-list-option *ngFor="let p of pregledi" 
+                         [selected]="p.id === izabraniPregled.id"
+                         (click)="selektujPregled(p)"
+                         class="timeline-item">
+          <mat-icon matListIcon>insights</mat-icon>
+          <div matLine class="timeline-title">
+            <strong>{{ p.posetaId }}</strong> 
+          </div>
+          <div matLine class="timeline-sub">Datum: {{ p.datum }}</div>
+        </mat-list-option>
+      </mat-selection-list>
+    </div>
+
+    <div class="details-panel">
+      <mat-card class="display-card">
+        
+        <div class="details-header">
+          <h3>Pregled od dana: {{ izabraniPregled.datum }}</h3>
+          
+          <button mat-flat-button [color]="prikaziMasku ? 'accent' : 'primary'" (click)="toggleMaska()">
+            <mat-icon>{{ prikaziMasku ? 'layers_clear' : 'layers' }}</mat-icon>
+            {{ prikaziMasku ? 'Sakrij masku' : 'Prikaži masku analize' }}
+          </button>
+        </div>
+
+        <div class="eye-images-grid">
+          
+          <div class="image-container">
+            <h4>Levo Oko (OS)</h4>
+            <div class="wrapper">
+              <img [src]="izabraniPregled.slikaOS" alt="Levo oko fundus">
+              <div class="image-overlay" *ngIf="prikaziMasku" [style.backgroundColor]="izabraniPregled.maskaOS">
+                <span class="overlay-label">AI: Uredan nalaz</span>
+              </div>
+            </div>
+            <div class="params">
+              <p>IOP: <strong>{{ izabraniPregled.iopOS }} mmHg</strong></p>
+              <p>CDR odnos: <strong>{{ izabraniPregled.cdrOS }}</strong></p>
+              <p>VF MD: <strong>{{ izabraniPregled.mdOS }} dB</strong></p>
+            </div>
+          </div>
+
+          <div class="image-container">
+            <h4>Desno Oko (OD)</h4>
+            <div class="wrapper">
+              <img [src]="izabraniPregled.slikaOD" alt="Desno oko fundus">
+              <div class="image-overlay alert" *ngIf="prikaziMasku" [style.backgroundColor]="izabraniPregled.maskaOD">
+                <span class="overlay-label">AI: RNFL stanjivanje!</span>
+              </div>
+            </div>
+            <div class="params">
+              <p>IOP: <strong class="text-danger">{{ izabraniPregled.iopOD }} mmHg</strong></p>
+              <p>CDR odnos: <strong class="text-danger">{{ izabraniPregled.cdrOD }}</strong></p>
+              <p>VF MD: <strong class="text-danger">{{ izabraniPregled.mdOD }} dB</strong></p>
+            </div>
+          </div>
+          
+        </div>
+
+        <div class="medical-report">
+          <h4>Klinički nalaz i mišljenje lekara:</h4>
+          <p class="report-text">{{ izabraniPregled.nalazLekara }}</p>
+        </div>
+
+      </mat-card>
+    </div>
+
+  </div>
+</div>

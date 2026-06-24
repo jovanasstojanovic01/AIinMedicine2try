@@ -1,0 +1,103 @@
+.dashboard-container {
+  display: flex;
+  gap: 24px;
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+
+.main-content {
+  flex: 7; /* Uzima 70% širine */
+}
+
+.side-panel {
+  flex: 3; /* Uzima 30% širine */
+}
+
+.table-card, .actions-card {
+  padding: 20px;
+  border-radius: 8px;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+  
+  h2 {
+    margin: 0;
+    font-weight: 500;
+  }
+}
+
+.search-field {
+  width: 350px;
+}
+
+table {
+  width: 100%;
+}
+
+.patient-name {
+  font-weight: 500;
+}
+
+// Stilovi za male lepe značke (Inicijalni / Kontrola)
+.badge {
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.badge-primary {
+  background-color: rgba(0, 106, 106, 0.1);
+  color: var(--mat-sys-primary);
+}
+
+.badge-secondary {
+  background-color: rgba(79, 99, 99, 0.1);
+  color: var(--mat-sys-secondary);
+}
+
+.actions-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 24px;
+  
+  h3 {
+    margin: 0;
+  }
+}
+
+.text-muted {
+  font-size: 14px;
+  opacity: 0.7;
+  margin-top: -8px;
+}
+
+.action-btn {
+  width: 100%;
+  padding: 24px 0; /* Čini dugmad većim i lakšim za klik lekara */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 15px;
+}
+
+// Responzivnost za manje ekrane
+@media (max-width: 960px) {
+  .dashboard-container {
+    flex-direction: column;
+  }
+  .search-field {
+    width: 100%;
+  }
+}

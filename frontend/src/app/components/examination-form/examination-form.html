@@ -1,0 +1,137 @@
+<div class="form-container">
+  <mat-card class="form-card">
+    <h2>Započni Novi Pregled</h2>
+    
+    <mat-stepper linear #stepper>
+      
+      <mat-step [stepControl]="vrstaPregledaForm">
+        <form [formGroup]="vrstaPregledaForm" class="step-content">
+          <ng-template matStepLabel>Tip Pregleda</ng-template>
+          
+          <p class="instruction">Izaberite da li pacijent dolazi prvi put ili je u pitanju redovna kontrola:</p>
+          
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Vrsta kontrole</mat-label>
+            <mat-select formControlName="tip">
+              <mat-option value="Inicijalni">Inicijalni pregled (Prvi dolazak - Otvara se karton)</mat-option>
+              <mat-option value="Kontrola">Redovna kontrola (Postojeći pacijent)</mat-option>
+            </mat-select>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width" *ngIf="vrstaPregledaForm.get('tip')?.value === 'Kontrola'">
+            <mat-label>Pronađi postojećeg pacijenta (Ime / JMBG)</mat-label>
+            <input matInput formControlName="pretragaPacijenta" placeholder="Ukucajte za pretragu...">
+            <mat-icon matSuffix>search</mat-icon>
+          </mat-form-field>
+
+          <div class="stepper-buttons">
+            <button mat-raised-button color="primary" matStepperNext>Dalje</button>
+          </div>
+        </form>
+      </mat-step>
+
+      <mat-step [stepControl]="pacijentForm" *ngIf="vrstaPregledaForm.get('tip')?.value === 'Inicijalni'">
+        <form [formGroup]="pacijentForm" class="step-content">
+          <ng-template matStepLabel>Inicijalni Karton Pacijenta</ng-template>
+          
+          <p class="instruction">Pacijent nema otvoren dosije. Popunite osnovne medicinske podatke:</p>
+          
+          <div class="form-grid">
+            <mat-form-field appearance="outline">
+              <mat-label>Ime i Prezime pacijenta</mat-label>
+              <input matInput formControlName="imePrezime" placeholder="Marko Nikolić">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>JMBG</mat-label>
+              <input matInput formControlName="jmbg" placeholder="13 cifara">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>Godište</mat-label>
+              <input matInput type="number" formControlName="godiste" placeholder="Npr. 1985">
+            </mat-form-field>
+          </div>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Porodična anamneza (Istorija glaukoma u porodici)</mat-label>
+            <textarea matInput formControlName="porodicnaAnamneza" rows="2"></textarea>
+          </mat-form-field>
+
+          <mat-form-field appearance="outline" class="full-width">
+            <mat-label>Opšte napomene (Alergije, druge bolesti)</mat-label>
+            <textarea matInput formControlName="opsteNapomene" rows="2"></textarea>
+          </mat-form-field>
+
+          <div class="stepper-buttons">
+            <button mat-button matStepperPrevious>Nazad</button>
+            <button mat-raised-button color="primary" matStepperNext>Dalje</button>
+          </div>
+        </form>
+      </mat-step>
+
+      <mat-step [stepControl]="pregledForm">
+        <form [formGroup]="pregledForm" class="step-content">
+          <ng-template matStepLabel>Oftalmološki Nalaz & Slike</ng-template>
+          
+          <p class="instruction">Unesite izmerene vrednosti i uploadujte fundus fotografije:</p>
+
+          <div class="form-grid">
+            <mat-form-field appearance="outline">
+              <mat-label>IOP Levo Oko (mmHg)</mat-label>
+              <input matInput type="number" formControlName="iopLevo" placeholder="Npr. 16">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>IOP Desno Oko (mmHg)</mat-label>
+              <input matInput type="number" formControlName="iopDesno" placeholder="Npr. 22">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>CDR Levo Oko (Cup/Disk)</mat-label>
+              <input matInput placeholder="Npr. 0.4">
+            </mat-form-field>
+
+            <mat-form-field appearance="outline">
+              <mat-label>CDR Desno Oko (Cup/Disk)</mat-label>
+              <input matInput placeholder="Npr. 0.6">
+            </mat-form-field>
+          </div>
+
+          <div class="upload-section-grid">
+            <div class="upload-box">
+              <span class="upload-title">Fundus Slika - Levo Oko</span>
+              <button type="button" mat-stroked-button (click)="fileLevo.click()">
+                <mat-icon>cloud_upload</mat-icon> Izaberi sliku
+              </button>
+              <input type="file" #fileLevo class="hidden-input" (change)="onFileSelected($event, 'levo')">
+              <span class="file-name" *ngIf="slikaLevoIme">{{ slikaLevoIme }}</span>
+            </div>
+
+            <div class="upload-box">
+              <span class="upload-title">Fundus Slika - Desno Oko</span>
+              <button type="button" mat-stroked-button (click)="fileDesno.click()">
+                <mat-icon>cloud_upload</mat-icon> Izaberi sliku
+              </button>
+              <input type="file" #fileDesno class="hidden-input" (change)="onFileSelected($event, 'desno')">
+              <span class="file-name" *ngIf="slikaDesnoIme">{{ slikaDesnoIme }}</span>
+            </div>
+          </div>
+
+          <mat-form-field appearance="outline" class="full-width text-area-spacing">
+            <mat-label>Klinički nalaz, zaključak i terapija lekara</mat-label>
+            <textarea matInput formControlName="klinickiNalaz" rows="4" placeholder="Napišite izveštaj..."></textarea>
+          </mat-form-field>
+
+          <div class="stepper-buttons">
+            <button mat-button matStepperPrevious>Nazad</button>
+            <button mat-raised-button color="accent" (click)="sacuvajPregled()" [disabled]="!pregledForm.valid">
+              <mat-icon>check_circle</mat-icon> Završi i sačuvaj pregled
+            </button>
+          </div>
+        </form>
+      </mat-step>
+
+    </mat-stepper>
+  </mat-card>
+</div>
