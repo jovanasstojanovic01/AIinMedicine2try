@@ -1,9 +1,9 @@
-# app/ml/architectures/gru_architecture.py
+
 import torch
 import torch.nn as nn
 
 class GlaucomaProgressionGRU(nn.Module):
-    def __init__(self, input_size, hidden_size=32, num_layers=1, dropout=0.5): # Matching config.py
+    def __init__(self, input_size, hidden_size=32, num_layers=1, dropout=0.5): 
         super(GlaucomaProgressionGRU, self).__init__()
 
         self.gru = nn.GRU(

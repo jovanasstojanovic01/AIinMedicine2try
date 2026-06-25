@@ -1,4 +1,4 @@
-# app/ml/architectures/unet_architecture.py
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -41,12 +41,12 @@ class UpSample(nn.Module):
     def forward(self, x1, x2):
         x1 = self.up(x1)
         
-        # Pad dimensions if the input sizes aren't perfectly divisible by 2
+        
         diffY = x2.size()[2] - x1.size()[2]
         diffX = x2.size()[3] - x1.size()[3]
         x1 = F.pad(x1, [diffX // 2, diffX - diffX // 2, diffY // 2, diffY - diffY // 2])
         
-        # Concatenate features from the encoder (skip connection) along the channel dimension
+        
         x = torch.cat([x2, x1], dim=1)
         return self.conv(x)
 
@@ -64,7 +64,7 @@ class RefugeUNet(nn.Module):
         self.up3 = UpSample(256, 128)
         self.up4 = UpSample(128, 64)
         
-        # Output layer maps to 2 channels (Channel 0: Optic Disc Mask, Channel 1: Optic Cup Mask)
+        
         self.outc = nn.Conv2d(64, out_channels, kernel_size=1)
 
     def forward(self, x):

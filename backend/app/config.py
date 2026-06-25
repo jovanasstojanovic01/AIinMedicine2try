@@ -7,22 +7,26 @@ BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 
 class Config:
+    # SQLALCHEMY_DATABASE_URI = "postgresql://korisnik:lozinka@localhost:5432/ime_baze"
     SQLALCHEMY_DATABASE_URI = os.getenv(
         "DATABASE_URL", f"sqlite:///{os.path.join(BASE_DIR, 'glaucoma.db')}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    UPLOAD_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'uploads')
+    IMAGES_FOLDER = os.path.join(UPLOAD_FOLDER, 'images')
+    MASKS_FOLDER = os.path.join(UPLOAD_FOLDER, 'masks')
+
+    WEIGHTS_FOLDER = os.path.join(BASE_DIR, 'ml', 'weights')
+
 
     REFUGEUNET_WEIGHTS = os.getenv(
-        "REFUGEUNET_WEIGHTS", os.path.join(BASE_DIR, "checkpoints", "refugeunet_best.pth")
+        "REFUGEUNET_WEIGHTS", os.path.join(WEIGHTS_FOLDER, "refuge_unet.pth")
     )
-    LSTM_WEIGHTS = os.getenv(
-        "LSTM_WEIGHTS", os.path.join(BASE_DIR, "checkpoints", "lstm_best_overall.pth")
+    GRU_WEIGHTS = os.getenv(
+        "GRU_WEIGHTS", os.path.join(WEIGHTS_FOLDER,"gru.pth")
     )
     XGB_MODEL = os.getenv(
-        "XGB_MODEL", os.path.join(BASE_DIR, "checkpoints", "xgb_best_overall.pkl")
-    )
-    SCALER_PATH = os.getenv(
-        "SCALER_PATH", os.path.join(BASE_DIR, "checkpoints", "scaler.pkl")
+        "XGB_MODEL", os.path.join(WEIGHTS_FOLDER, "xgboost_model.json")
     )
 
     VF_POINTS = 61
@@ -38,7 +42,5 @@ class Config:
     DROPOUT = 0.3
 
     CFP_IMAGE_SIZE = 512
-    CFP_UPLOAD_FOLDER = os.path.join(BASE_DIR, "uploads", "cfp_images")
 
-    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024 
