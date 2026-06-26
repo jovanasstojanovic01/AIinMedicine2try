@@ -10,6 +10,8 @@ def main():
     output_x_path = os.path.join(config.OUTPUT_DIR, "X_gru.npy")
     output_y_path = os.path.join(config.OUTPUT_DIR, "y_gru.npy")
 
+    output_lengths_path = os.path.join(config.OUTPUT_DIR, "lengths_gru.npy")
+
     if not os.path.exists(baseline_path) or not os.path.exists(followup_path):
         print("[GREŠKA] Prvo moraš pokrenuti prethodni korak (merge_grape_data.py)!")
         return
@@ -21,7 +23,6 @@ def main():
     df_b["Visit Number"] = 0
     
     features_list = ["IOP", "vCDR", "hCDR", "aCDR", "Rim_Area_Pixels"]
-    
     id_cols = ["Subject Number", "Laterality", "Visit Number"]
     
     df_b_sub = df_b[id_cols + features_list + ["Progression Status"]]
@@ -31,14 +32,12 @@ def main():
     df_f_sub["Progression Status"] = df_f_sub.set_index(["Subject Number", "Laterality"]).index.map(progression_map)
 
     df_all = pd.concat([df_b_sub, df_f_sub], axis=0, ignore_index=True)
-    
     df_all = df_all.sort_values(by=["Subject Number", "Laterality", "Visit Number"]).reset_index(drop=True)
-
-    print("-> Skaliranje kliničkih obeležja pomoću StandardScaler-a...")
 
     print("-> Kreiranje hronoloških sekvenci po pacijentima...")
     X_sequences = []
     y_labels = []
+    lengths_list = [] 
     
     max_visits = int(df_all["Visit Number"].max()) + 1
     num_features = len(features_list)
@@ -49,30 +48,28 @@ def main():
         group = group.sort_values(by="Visit Number")
         
         current_features = group[features_list].values
-        
         label = group["Progression Status"].iloc[0]
         
         padded_features = np.zeros((max_visits, num_features), dtype=np.float32)
-        actual_steps = current_features.shape[0]
+        actual_steps = current_features.shape[0] 
         
         padded_features[-actual_steps:] = current_features
         
         X_sequences.append(padded_features)
         y_labels.append(label)
+        lengths_list.append(actual_steps)
 
     X = np.array(X_sequences, dtype=np.float32)
     y = np.array(y_labels, dtype=np.float32)
+    lengths = np.array(lengths_list, dtype=np.int32) 
 
     os.makedirs("outputs", exist_ok=True)
     np.save(output_x_path, X)
     np.save(output_y_path, y)
+    np.save(output_lengths_path, lengths)
 
     print("\n================ SEKVENCIRANJE ZAVRŠENO ================")
     print(f"Ukupan broj sekvenci (pacijenti-oči): {X.shape[0]}")
-    print(f"Maksimalan broj vremenskih koraka:    {X.shape[1]}")
-    print(f"Broj kliničkih obeležja po koraku:    {X.shape[2]}")
-    print(f"Konačni oblik ulaza X za GRU:        {X.shape} -> [Batch, Time_Steps, Features]")
-    print(f"Konačni oblik izlaza y za GRU:       {y.shape} -> [Batch]")
     print(f"Fajlovi uspešno sačuvani u 'outputs/' folderu.")
     print("========================================================")
 
