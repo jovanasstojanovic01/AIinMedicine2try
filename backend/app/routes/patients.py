@@ -1,4 +1,5 @@
 
+from re import search
 from flask import Blueprint, request
 from marshmallow import ValidationError
 from app.extensions import db
@@ -6,6 +7,7 @@ from app.models.db_models import Pacijent, Pregled
 from app.models.schemas import patient_schema, patients_schema  
 from app.ml.ml_service import ml_service
 from app.utils.responses import ok, created, error, not_found
+from datetime import datetime
 
 bp = Blueprint("patients", __name__, url_prefix="/api/patients")
 
@@ -68,16 +70,39 @@ def list_patients():
     page = request.args.get("page", 1, type=int)
     per_page = min(request.args.get("per_page", 20, type=int), 100)
     search = request.args.get("search", "").strip()
+    birth_date_str = request.args.get("birth_date", "").strip()
 
     q = Pacijent.query
+    q = Pacijent.query
     if search:
+        
         like = f"%{search}%"
-        q = q.filter(Pacijent.first_name.ilike(like) | Pacijent.last_name.ilike(like))
+        
+        
+        ime_prezime = db.func.concat(Pacijent.first_name, ' ', Pacijent.last_name)
+        
+        prezime_ime = db.func.concat(Pacijent.last_name, ' ', Pacijent.first_name)
+        
+        
+        q = q.filter(
+            ime_prezime.ilike(like) | 
+            prezime_ime.ilike(like) |
+            Pacijent.first_name.ilike(like) |
+            Pacijent.last_name.ilike(like)
+        )
+    if birth_date_str:
+        try:
+            
+            stvarno_vreme = datetime.strptime(birth_date_str, "%Y-%m-%d").date()
+            q = q.filter(Pacijent.birth_date == stvarno_vreme)
+        except ValueError:
+            
+            
+            pass
 
     pagination = q.order_by(Pacijent.last_name, Pacijent.first_name).paginate(
         page=page, per_page=per_page, error_out=False
     )
-    
     
     serialized_patients = patients_schema.dump(pagination.items)
 
