@@ -11,3 +11,4 @@ backend/app/models/__pycache__/db_models.cpython-313.pyc
 backend/app/models/__pycache__/schemas.cpython-313.pyc
 backend/app/routes/__pycache__/patients.cpython-313.pyc
 backend/app/utils/__pycache__/responses.cpython-313.pyc
+/backend/uploads
