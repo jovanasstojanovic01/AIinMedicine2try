@@ -11,58 +11,58 @@ from datetime import datetime
 
 bp = Blueprint("patients", __name__, url_prefix="/api/patients")
 
-@bp.get("/<int:patient_id>/predict-progression")
-def evaluate_progression(patient_id):
-    eye = request.args.get("eye", "OD").upper()
-    if eye not in ["OD", "OS"]:
-        return error("Parametar 'eye' mora biti 'OD' ili 'OS'.", 400)
+# @bp.get("/<int:patient_id>/predict-progression")
+# def evaluate_progression(patient_id):
+#     eye = request.args.get("eye", "OD").upper()
+#     if eye not in ["OD", "OS"]:
+#         return error("Parametar 'eye' mora biti 'OD' ili 'OS'.", 400)
 
-    pacijent = Pacijent.query.get(patient_id)
-    if pacijent is None:
-        return not_found("Pacijent nije pronađen.")
-
-    
-    pregledi = Pregled.query.filter_by(patient_id=patient_id).order_by(Pregled.visit_number).all()
-
-    if len(pregledi) == 0:
-        return error("Pacijent nema evidentiranih pregleda u bazi podataka.", 400)
+#     pacijent = Pacijent.query.get(patient_id)
+#     if pacijent is None:
+#         return not_found("Pacijent nije pronađen.")
 
     
-    sequence_history = []
-    for p in pregledi:
+#     pregledi = Pregled.query.filter_by(patient_id=patient_id).order_by(Pregled.visit_number).all()
+
+#     if len(pregledi) == 0:
+#         return error("Pacijent nema evidentiranih pregleda u bazi podataka.", 400)
+
+    
+#     sequence_history = []
+#     for p in pregledi:
         
-        vcdr_val = 0.0
-        if p.multimedija:
-            vcdr_val = p.multimedija.od_vcdr if eye == "OD" else p.multimedija.os_vcdr
+#         vcdr_val = 0.0
+#         if p.multimedija:
+#             vcdr_val = p.multimedija.od_vcdr if eye == "OD" else p.multimedija.os_vcdr
 
         
-        iop = p.od_iop if eye == "OD" else p.os_iop
-        md = p.od_md if eye == "OD" else p.os_md
-        oct_mean = p.od_oct_mean if eye == "OD" else p.os_oct_mean
+#         iop = p.od_iop if eye == "OD" else p.os_iop
+#         md = p.od_md if eye == "OD" else p.os_md
+#         oct_mean = p.od_oct_mean if eye == "OD" else p.os_oct_mean
         
-        sequence_history.append([
-            float(iop or 0.0),
-            float(md or 0.0),
-            float(oct_mean or 0.0),
-            float(vcdr_val or 0.0),
-            float(pacijent.cct or 540.0)
-        ])
+#         sequence_history.append([
+#             float(iop or 0.0),
+#             float(md or 0.0),
+#             float(oct_mean or 0.0),
+#             float(vcdr_val or 0.0),
+#             float(pacijent.cct or 540.0)
+#         ])
 
-    try:
-        prediction = ml_service.predict_progression(sequence_history)
+#     try:
+#         prediction = ml_service.predict_progression(sequence_history)
         
         
-        poslednji_pregled = pregledi[-1]
-        if eye == "OD":
-            poslednji_pregled.od_progression_status = int(prediction.get("progression", 0))
-        else:
-            poslednji_pregled.os_progression_status = int(prediction.get("progression", 0))
-        db.session.commit()
+#         poslednji_pregled = pregledi[-1]
+#         if eye == "OD":
+#             poslednji_pregled.od_progression_status = int(prediction.get("progression", 0))
+#         else:
+#             poslednji_pregled.os_progression_status = int(prediction.get("progression", 0))
+#         db.session.commit()
 
-        return ok(prediction, f"Predikcija progresije za {eye} oko uspešno izvršena.")
-    except Exception as e:
-        db.session.rollback()
-        return error(f"Greška tokom predikcije: {str(e)}", 500)
+#         return ok(prediction, f"Predikcija progresije za {eye} oko uspešno izvršena.")
+#     except Exception as e:
+#         db.session.rollback()
+#         return error(f"Greška tokom predikcije: {str(e)}", 500)
 
 
 @bp.get("")
