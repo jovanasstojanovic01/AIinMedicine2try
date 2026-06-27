@@ -15,14 +15,15 @@ def get_val(row, col_name, is_float=True):
 
 def main():
     print("Loading core files...")
-    baseline_path = os.path.join(config.OUTPUT_DIR, "grape_baseline_merged.csv")
-    followup_path = os.path.join(config.OUTPUT_DIR, "grape_followup_merged.csv")
-    features_path = os.path.join(config.OUTPUT_DIR, "grape_extracted_features.csv")
+    baseline_path = os.path.join(config.OUTPUT_DIR, "grape_baseline_merged.xlsx")
+    followup_path = os.path.join(config.OUTPUT_DIR, "grape_followup_merged.xlsx")
+    features_path = os.path.join(config.OUTPUT_DIR, "grape_extracted_features.xlsx")
 
-    baseline_df = pd.read_csv(baseline_path)
-    followup_df = pd.read_csv(followup_path)
-    features_df = pd.read_csv(features_path)
+    baseline_df = pd.read_excel(baseline_path)
+    followup_df = pd.read_excel(followup_path)
+    features_df = pd.read_excel(features_path)
 
+    # Pravilno mapiranje kolona iz drugog reda (kako si navela)
     baseline_mapping = {
         'Unnamed: 8': 'PLR2',
         'Unnamed: 9': 'PLR3',
@@ -45,7 +46,7 @@ def main():
     female_names_df = pd.read_excel(female_names_path)
     male_names_df = pd.read_excel(male_names_path)
 
-    # Cleaning basic patient IDs
+    # Čišćenje ID-jeva
     baseline_df = baseline_df.dropna(subset=['Subject Number'])
     followup_df = followup_df.dropna(subset=['Subject Number'])
     
@@ -57,9 +58,24 @@ def main():
 
     print(f"Loaded: Baseline ({len(baseline_df)} rows), Follow-up ({len(followup_df)} rows).")
 
-    print("\nCreating Patients table...")
-    patients_raw = baseline_df.drop_duplicates(subset=['Subject Number']).copy()
+    print("\nCreating Patients table with Baseline Progression Flags (PLR2, PLR3, MD)...")
+    
+    # Prvo pravimo rečnik flegova za svakog pacijenta posebno za OD i OS
+    patient_flags = {}
+    for subj_id, group in baseline_df.groupby('Subject Number'):
+        od_group = group[group['Laterality'] == 'OD']
+        os_group = group[group['Laterality'] == 'OS']
+        
+        patient_flags[subj_id] = {
+            'od_plr2': get_val(od_group, 'PLR2'),
+            'od_plr3': get_val(od_group, 'PLR3'),
+            'od_md': get_val(od_group, 'MD'),
+            'os_plr2': get_val(os_group, 'PLR2'),
+            'os_plr3': get_val(os_group, 'PLR3'),
+            'os_md': get_val(os_group, 'MD')
+        }
 
+    patients_raw = baseline_df.drop_duplicates(subset=['Subject Number']).copy()
     current_year = 2026
     
     first_name_list = []
@@ -102,28 +118,33 @@ def main():
         start_date = datetime(random.randint(2015, 2020), random.randint(1, 12), random.randint(1, 28))
         baseline_exam_dates[subj_id] = start_date
 
+    # Konstruisanje nove tabele pacijenata sa uključenim flegovima
     patients_table = pd.DataFrame({
         'patient_id': patients_raw['Subject Number'],
+        'first_name': first_name_list,
+        'last_name': last_name_list,
         'gender': patients_raw['Gender'].fillna(''),
+        'birth_date': birth_dates,
         'cct': patients_raw['CCT'].fillna(0.0),
-        'glaucoma_category': patients_raw['Category of Glaucoma'].fillna('OAG')
+        'glaucoma_category': patients_raw['Category of Glaucoma'].fillna('OAG'),
+        # Pridruživanje flegova koji su izbačeni iz pregleda
+        'od_plr2': [patient_flags[sid]['od_plr2'] for sid in patients_raw['Subject Number']],
+        'od_plr3': [patient_flags[sid]['od_plr3'] for sid in patients_raw['Subject Number']],
+        'od_md_flag': [patient_flags[sid]['od_md'] for sid in patients_raw['Subject Number']],
+        'os_plr2': [patient_flags[sid]['os_plr2'] for sid in patients_raw['Subject Number']],
+        'os_plr3': [patient_flags[sid]['os_plr3'] for sid in patients_raw['Subject Number']],
+        'os_md_flag': [patient_flags[sid]['os_md'] for sid in patients_raw['Subject Number']]
     })
 
-    patients_table['first_name'] = first_name_list
-    patients_table['last_name'] = last_name_list
-    patients_table['birth_date'] = birth_dates
-    
-    patients_table = patients_table[['patient_id', 'first_name', 'last_name', 'gender', 'birth_date', 'cct', 'glaucoma_category']]
-
     print("Preparing and propagating missing timeline data...")
-    
     baseline_df['Visit Number'] = 0
     baseline_df['Interval Years'] = 0.0
 
     all_data_raw = pd.concat([baseline_df, followup_df], ignore_index=True)
     all_data_raw.sort_values(by=['Subject Number', 'Laterality', 'Visit Number'], inplace=True, ignore_index=True)
 
-    potential_columns = ['Corresponding CFP', 'MD', 'Mean', 'S', 'N', 'I', 'T', 'vCDR', 'hCDR', 'aCDR', 'Rim_Area_Pixels']
+    # Uklanjamo 'MD' iz kolona koje se propagiraju kroz preglede jer je on sada deo pacijenta
+    potential_columns = ['Corresponding CFP', 'Mean', 'S', 'N', 'I', 'T', 'vCDR', 'hCDR', 'aCDR', 'Rim_Area_Pixels']
     columns_to_fill = [col for col in potential_columns if col in all_data_raw.columns]
     
     if columns_to_fill:
@@ -151,32 +172,27 @@ def main():
 
         od_iop_val = get_val(od_row, 'IOP')
         os_iop_val = get_val(os_row, 'IOP')
-        od_md_val = get_val(od_row, 'MD')
-        os_md_val = get_val(os_row, 'MD')
 
         max_iop = max(filter(None, [od_iop_val, os_iop_val]), default=16.0)
-        min_md = min(filter(None, [od_md_val, os_md_val]), default=-1.5)
 
-        if min_md < -12:
+        # Generisanje komentara na osnovu IOP pritiska (pošto smo izbacili MD iz exam-a)
+        if max_iop > 24:
             therapy_options = ["Surgery", "Enhanced drugs"]
             comments_options = [
-                f"Significant progression of glaucomatous optic neuropathy in both eyes. Max IOP is {max_iop} mmHg. Surgical intervention indicated.",
-                f"Severe visual field defects detected (MD {min_md} dB). Therapy escalated to combined regimens, monitor target IOP closely.",
-                f"Advanced glaucoma status. Current pressure of {max_iop} mmHg requires urgent trabeculectomy consideration."
+                f"Elevated intraocular pressure detected ({max_iop} mmHg). High risk of optic nerve damage. Surgical intervention indicated.",
+                f"Uncontrolled IOP at {max_iop} mmHg. Therapy escalated to combined regimens, monitor closely."
             ]
-        elif min_md < -6 or max_iop > 22:
+        elif max_iop > 21:
             therapy_options = ["Laser", "Enhanced drugs"]
             comments_options = [
-                f"Moderate visual field defects with elevated intraocular pressure ({max_iop} mmHg). SLT (selective laser trabeculoplasty) is advised.",
-                f"Clinical findings suggest modifications in the treatment plan. Escalated to enhanced topical drugs configuration.",
-                f"IOP fluctuating around {max_iop} mmHg. Visual field metrics indicate moderate sensitivity depression. Follow-up in 3 months."
+                f"Borderline intraocular pressure ({max_iop} mmHg). SLT (selective laser trabeculoplasty) is advised.",
+                f"IOP fluctuating around {max_iop} mmHg. Escalated to enhanced topical drugs configuration."
             ]
         else:
             therapy_options = ["Ništa", "Enhanced drugs"]
             comments_options = [
-                f"Visual field status stable (MD {min_md} dB). IOP well-controlled ({max_iop} mmHg). Continue routine monitoring.",
-                f"Early-stage open-angle glaucoma, currently well compensated under the active protocol. Patient is asymptomatic.",
-                f"Intraocular pressure within normal limits ({max_iop} mmHg). Glaucomatous features show no current signs of progression."
+                f"IOP well-controlled ({max_iop} mmHg). Continue routine monitoring.",
+                f"Intraocular pressure within normal limits. Glaucomatous features show no current signs of progression."
             ]
 
         chosen_therapy = random.choice(therapy_options)
@@ -187,9 +203,8 @@ def main():
             'visit_number': int(visit_num),
             'exam_date': exam_date_str,
             
-            # Right Eye (OD)
+            # Right Eye (OD) - BEZ MD KOLONE
             'od_iop': od_iop_val,
-            'od_md': od_md_val,
             'od_oct_mean': get_val(od_row, 'Mean'),
             'od_oct_s': get_val(od_row, 'S'),
             'od_oct_n': get_val(od_row, 'N'),
@@ -197,9 +212,8 @@ def main():
             'od_oct_t': get_val(od_row, 'T'),
             'od_progression_status': get_val(od_row, 'Progression Status') if visit_num == 0 else None,
             
-            # Left Eye (OS)
+            # Left Eye (OS) - BEZ MD KOLONE
             'os_iop': os_iop_val,
-            'os_md': os_md_val,
             'os_oct_mean': get_val(os_row, 'Mean'),
             'os_oct_s': get_val(os_row, 'S'),
             'os_oct_n': get_val(os_row, 'N'),
@@ -229,17 +243,14 @@ def main():
         multimedia_data = {
             'patient_id': int(subj_id),
             'visit_number': int(visit_num),
-            
             'od_image': od_img if od_img else None,
             'os_image': os_img if os_img else None,
             
-            # REFUGE Right Eye Features
             'od_vcdr': determine_feat(od_row, od_feat, 'vCDR'),
             'od_hcdr': determine_feat(od_row, od_feat, 'hCDR'),
             'od_acdr': determine_feat(od_row, od_feat, 'aCDR'),
             'od_rim_area_pixels': determine_feat(od_row, od_feat, 'Rim_Area_Pixels'),
             
-            # REFUGE Left Eye Features
             'os_vcdr': determine_feat(os_row, os_feat, 'vCDR'),
             'os_hcdr': determine_feat(os_row, os_feat, 'hCDR'),
             'os_acdr': determine_feat(os_row, os_feat, 'aCDR'),

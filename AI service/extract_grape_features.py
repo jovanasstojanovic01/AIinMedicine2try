@@ -66,7 +66,7 @@ def main():
     grape_excel_path = os.path.join(config.DATA_DIR, "VF and clinical information.xlsx") 
     grape_images_dir = os.path.join(config.DATA_DIR, "CFPs") 
     checkpoint_path = os.path.join(config.REFUGE_MODEL, "best_model.pth")
-    output_csv_path = os.path.join(config.OUTPUT_DIR, "grape_extracted_features.csv")
+    output_csv_path = os.path.join(config.OUTPUT_DIR, "grape_extracted_features.xlsx")
     
     if not os.path.exists(grape_excel_path):
         print(f"[GREŠKA] Nije pronađen GRAPE Excel fajl na putanji: {grape_excel_path}")
@@ -120,7 +120,7 @@ def main():
         features_df = features_df[ordered_cols]
         
         os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-        features_df.to_csv(output_csv_path, index=False)
+        features_df.to_excel(output_csv_path, index=False)
         
         print("\n================ UKLANJANJE I EKSTREKCIJA USPEŠNA ================")
         print(f"Generisan fajl sa parametrima: {output_csv_path}")

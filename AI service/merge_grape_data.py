@@ -4,20 +4,20 @@ import config
 
 def main():
     grape_excel_path = os.path.join(config.DATA_DIR, "VF and clinical information.xlsx")
-    unet_features_path = os.path.join(config.OUTPUT_DIR, "grape_extracted_features.csv")
+    unet_features_path = os.path.join(config.OUTPUT_DIR, "grape_extracted_features.xlsx")
     
-    output_baseline_path = os.path.join(config.OUTPUT_DIR, "grape_baseline_merged.csv")
-    output_followup_path = os.path.join(config.OUTPUT_DIR, "grape_followup_merged.csv")
+    output_baseline_path = os.path.join(config.OUTPUT_DIR, "grape_baseline_merged.xlsx")
+    output_followup_path = os.path.join(config.OUTPUT_DIR, "grape_followup_merged.xlsx")
     
     if not os.path.exists(grape_excel_path):
         print(f"[GREŠKA] Nije pronađen GRAPE Excel fajl na putanji: {grape_excel_path}")
         return
     if not os.path.exists(unet_features_path):
-        print(f"[GREŠKA] Nije pronađen CSV sa UNet osobinama na putanji: {unet_features_path}")
+        print(f"[GREŠKA] Nije pronađen EXCEL sa UNet osobinama na putanji: {unet_features_path}")
         return
 
     print("-> Učitavanje podataka...")
-    unet_df = pd.read_csv(unet_features_path)
+    unet_df = pd.read_excel(unet_features_path)
     
     df_baseline = pd.read_excel(grape_excel_path, sheet_name=0)
     df_followup = pd.read_excel(grape_excel_path, sheet_name=1)
@@ -46,8 +46,8 @@ def main():
             followup_merged[col] = followup_merged[col].fillna(followup_merged[col].mean())
 
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
-    baseline_merged.to_csv(output_baseline_path, index=False)
-    followup_merged.to_csv(output_followup_path, index=False)
+    baseline_merged.to_excel(output_baseline_path, index=False)
+    followup_merged.to_excel(output_followup_path, index=False)
     
     print("\n================ SPAJANJE PODATAKA USPEŠNO ================")
     print(f"1. Baseline tabela sačuvana na:  {output_baseline_path}")

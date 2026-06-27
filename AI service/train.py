@@ -35,7 +35,8 @@ def train_single_fold(model, train_loader, val_loader, criterion, optimizer, epo
             batch_x, batch_y = batch_x.to(device), batch_y.to(device)
             
             optimizer.zero_grad()
-            logits = model(batch_x, batch_lengths).squeeze(-1)
+            # IZMENA: Uklonjen .squeeze(-1) jer logits sada imaju oblik [batch_size, 3]
+            logits = model(batch_x, batch_lengths)
             loss = criterion(logits, batch_y)
             loss.backward()
             
@@ -55,22 +56,31 @@ def train_single_fold(model, train_loader, val_loader, criterion, optimizer, epo
         with torch.no_grad():
             for batch_x, batch_y, batch_lengths in val_loader:
                 batch_x_dev = batch_x.to(device)
-                logits = model(batch_x_dev, batch_lengths).squeeze(-1)
+                # IZMENA: Uklonjen .squeeze(-1) da se zadrže sve 3 labele
+                logits = model(batch_x_dev, batch_lengths)
                 
                 probs = torch.sigmoid(logits).cpu().numpy()
                 all_gru_preds.extend(probs)
                 all_targets.extend(batch_y.numpy())
                 
+                # Prilagođavanje za XGBoost pošto on radi sa 2D podacima
                 batch_x_xgb = batch_x.numpy().reshape(batch_x.size(0), -1)
+                # Privremeno predviđamo fleg (uzimamo prvu klasu ili prosek za ansambl)
                 xgb_p = xgb_model.predict_proba(batch_x_xgb)[:, 1]
-                all_xgb_preds.extend(xgb_p)
+                # Širimo XGB predikciju na 3 kolone da odgovara obliku GRU-a za ansambl
+                xgb_p_multi = np.column_stack([xgb_p, xgb_p, xgb_p])
+                all_xgb_preds.extend(xgb_p_multi)
         
         all_gru_preds = np.array(all_gru_preds)
         all_xgb_preds = np.array(all_xgb_preds)
         all_targets = np.array(all_targets)
         
         ensemble_preds = (0.55 * all_gru_preds) + (0.45 * all_xgb_preds)
-        epoch_val_loss = log_loss(all_targets, ensemble_preds, labels=[0, 1])
+        
+        # Računamo prosečan log_loss za sve tri labele zajedno
+        epoch_val_loss = np.mean([
+            log_loss(all_targets[:, i], ensemble_preds[:, i], labels=[0, 1]) for i in range(3)
+        ])
         
         fold_train_losses.append(epoch_train_loss)
         fold_val_losses.append(epoch_val_loss)
@@ -99,7 +109,9 @@ def train_single_fold(model, train_loader, val_loader, criterion, optimizer, epo
             xgb_w = 1.0 - w
             
             current_preds = (gru_w * best_gru_preds) + (xgb_w * best_xgb_preds)
-            current_loss = log_loss(best_fold_targets, current_preds, labels=[0, 1])
+            current_loss = np.mean([
+                log_loss(best_fold_targets[:, i], current_preds[:, i], labels=[0, 1]) for i in range(3)
+            ])
             
             if current_loss < best_weight_loss:
                 best_weight_loss = current_loss
@@ -118,7 +130,6 @@ def main():
     
     x_path = os.path.join(config.OUTPUT_DIR, "X_gru.npy")
     y_path = os.path.join(config.OUTPUT_DIR, "y_gru.npy")
-    
     lengths_path = os.path.join(config.OUTPUT_DIR, "lengths_gru.npy")
     
     checkpoint_dir = config.CHECKPOINT_DIR
@@ -131,8 +142,9 @@ def main():
     
     _, _, num_features = X_raw.shape
     
+    # IZMENA: Izbačen 'stratify=y_data' jer stratifikacija ne podržava 2D multi-label nizove direktno
     X_train_raw, X_val_raw, y_train_orig, y_val, lengths_train, lengths_val = train_test_split(
-        X_raw, y_data, lengths_data, test_size=0.20, stratify=y_data, random_state=42
+        X_raw, y_data, lengths_data, test_size=0.20, random_state=42
     )
     
     print(f"\n================ START JEDNOSTRUKE EVALUACIJE ================")
@@ -151,12 +163,12 @@ def main():
     
     train_tensor_x = torch.tensor(X_train_final, dtype=torch.float32)
     train_tensor_y = torch.tensor(y_train_final, dtype=torch.float32)
-    train_tensor_lengths = torch.tensor(lengths_train, dtype=torch.long) # <--- DODATO
+    train_tensor_lengths = torch.tensor(lengths_train, dtype=torch.long)
     train_dataset = TensorDataset(train_tensor_x, train_tensor_y, train_tensor_lengths)
     
     val_tensor_x = torch.tensor(X_val_scaled, dtype=torch.float32)
     val_tensor_y = torch.tensor(y_val, dtype=torch.float32)
-    val_tensor_lengths = torch.tensor(lengths_val, dtype=torch.long) # <--- DODATO
+    val_tensor_lengths = torch.tensor(lengths_val, dtype=torch.long)
     val_dataset = TensorDataset(val_tensor_x, val_tensor_y, val_tensor_lengths)
     
     train_loader = DataLoader(train_dataset, batch_size=config.BATCH_SIZE, shuffle=True)
@@ -165,9 +177,11 @@ def main():
     print(f"   [XGBoost] Fitovanje modela...")
     X_train_xgb = X_train_final.reshape(X_train_final.shape[0], -1)
     
-    broj_negativnih = np.sum(y_train_orig == 0)
-    broj_pozitivnih = np.sum(y_train_orig == 1)
-    odnos_klasa = broj_negativnih / broj_pozitivnih
+    # Za XGBoost uzimamo prvu labelu za fitovanje (ili kombinaciju), pošto je on single-label
+    y_train_xgb = y_train_final[:, 0] 
+    broj_negativnih = np.sum(y_train_xgb == 0)
+    broj_pozitivnih = np.sum(y_train_xgb == 1)
+    odnos_klasa = broj_negativnih / max(broj_pozitivnih, 1)
     
     xgb_model = XGBClassifier(
         n_estimators=150, 
@@ -177,14 +191,16 @@ def main():
         random_state=42, 
         eval_metric='logloss'
     )
-    xgb_model.fit(X_train_xgb, y_train_final, verbose=False)
+    xgb_model.fit(X_train_xgb, y_train_xgb, verbose=False)
     
     model = GlaucomaProgressionGRU(
         input_size=num_features, hidden_size=config.HIDDEN_SIZE, num_layers=config.NUM_LAYERS, dropout=config.DROPOUT
     ).to(device)
     
     criterion = GlaucomaProgressionLoss()
-    criterion.loss_fn.pos_weight = criterion.loss_fn.pos_weight.to(device)
+    if hasattr(criterion.loss_fn, 'pos_weight') and criterion.loss_fn.pos_weight is not None:
+        criterion.loss_fn.pos_weight = criterion.loss_fn.pos_weight.to(device)
+        
     optimizer = optim.Adam(model.parameters(), lr=config.LR, weight_decay=config.WEIGHT_DECAY)
     
     global_best_val_loss = float('inf')
@@ -194,14 +210,15 @@ def main():
         model, train_loader, val_loader, criterion, optimizer, config.EPOCHS, device, checkpoint_dir, global_best_val_loss, xgb_model
     )
     
+    # Metrike računamo kao prosek kroz sve 3 labele (Multi-label evaluacija)
     f_preds_bin = (f_preds >= 0.5).astype(int)
-    acc = accuracy_score(f_targets, f_preds_bin)
-    auc = roc_auc_score(f_targets, f_preds)
+    acc = accuracy_score(f_targets.flatten(), f_preds_bin.flatten())
+    auc = roc_auc_score(f_targets, f_preds, average='macro')
     
     print("\n================ REZULTATI JEDNOSTRUKE PODELE ================")
     print(f"Najbolji Kombinovani Val Loss: {best_loss:.4f}")
-    print(f"Tačnost (Accuracy):           {acc*100:.2f}%")
-    print(f"ROC-AUC Score:                 {auc:.4f}")
+    print(f"Prosečna Tačnost (Accuracy):   {acc*100:.2f}%")
+    print(f"Prosečan ROC-AUC Score:        {auc:.4f}")
     print("===============================================================")
     
     plt.figure(figsize=(8, 5))
