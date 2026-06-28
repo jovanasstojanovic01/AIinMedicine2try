@@ -10,9 +10,9 @@ import matplotlib.pyplot as plt
 import joblib
 
 from src import GlaucomaTemporalDataset, GlaucomaVFProgressionGRU, GlaucomaVFLoss
-from create_gru_sequences import FEATURES_LIST
 import config
 
+import copy  # Trebaće nam za čuvanje najboljeg modela u memoriji
 
 def evaluate(model, loader, criterion, device):
     model.eval()
@@ -97,85 +97,16 @@ def main():
 
     print(f"Trening sekvenci: {len(train_idx)} | Validacionih sekvenci: {len(val_idx)}")
 
-    # --- Popunjavanje NaN (PRE skaliranja) ---
-    # merge_grape_data.py namerno OSTAVLJA NaN u vCDR/hCDR/aCDR/Rim_Area_Pixels
-    # kada UNet ekstrakcija ne pokrije neku sliku, i compute_vf_mean takođe
-    # može vratiti NaN ako su sve VF vrednosti te posete -1/NaN. Ako se ti
-    # NaN-ovi ne uklone PRE poziva scaler.fit/transform, propagiraju se kroz
-    # CEO scaler (mean_/scale_ postaju NaN), pa StandardScaler.transform
-    # vraća NaN za SVE redove, ne samo one koji su originalno imali NaN —
-    # to je uzrok "Input contains NaN" greške pri treningu.
-    #
-    # Popunjavamo medianom (robusnija na outliere od mean), računatom
-    # ISKLJUČIVO iz validnih (ne-padding) koraka TRENING dela — ne iz
-    # validacionog dela — da ne unesemo data leakage.
-    X_train_2d = X_train_raw.reshape(-1, num_features)
-    valid_rows_train = ~np.all(X_train_2d == 0, axis=1)
-
-    train_medians = np.nanmedian(X_train_2d[valid_rows_train], axis=0)
-    if np.isnan(train_medians).any():
-        # Ako je ceo feature NaN u trening delu (ekstremno retko), 0.0 je
-        # neutralan fallback (isti kao padding vrednost).
-        train_medians = np.nan_to_num(train_medians, nan=0.0)
-        print("[UPOZORENJE] Bar jedan feature je bio NaN za SVE validne trening redove — popunjen sa 0.0.")
-
-    n_nan_train = np.isnan(X_train_raw).sum()
-    n_nan_val = np.isnan(X_val_raw).sum()
-    if n_nan_train > 0 or n_nan_val > 0:
-        print(f"[INFO] Pronađeno NaN vrednosti — trening: {n_nan_train}, validacija: {n_nan_val}. Popunjavam medianom trening skupa: {train_medians}")
-
-    def fill_nan_with_train_median(X):
-        X_filled = X.copy()
-        for f_idx in range(num_features):
-            feat_slice = X_filled[:, :, f_idx]
-            nan_mask = np.isnan(feat_slice)
-            feat_slice[nan_mask] = train_medians[f_idx]
-        return X_filled
-
-    X_train_raw = fill_nan_with_train_median(X_train_raw)
-    X_val_raw = fill_nan_with_train_median(X_val_raw)
-
-    # Isto važi za y (VF_mean target) — ako je target NaN, mask na toj
-    # poziciji treba da bude 0 (već je tako po konstrukciji u
-    # create_gru_sequences.py ako je VF_mean NaN propagiran), ali za
-    # svaki slučaj NaN u y zamenjujemo sa 0.0 i FORSIRAMO mask=0 tu, da
-    # loss sigurno ne vidi NaN target.
-    nan_y_train = np.isnan(y_train)
-    nan_y_val = np.isnan(y_val)
-    if nan_y_train.any() or nan_y_val.any():
-        print(f"[UPOZORENJE] Pronađeno NaN u target (y) vrednostima — trening: {nan_y_train.sum()}, validacija: {nan_y_val.sum()}. Maskiram te pozicije i nuliram target.")
-    y_train = np.nan_to_num(y_train, nan=0.0)
-    y_val = np.nan_to_num(y_val, nan=0.0)
-    mask_train = mask_train.copy()
-    mask_val = mask_val.copy()
-    mask_train[nan_y_train] = 0.0
-    mask_val[nan_y_val] = 0.0
-
     # StandardScaler se fituje SAMO na trening podacima (i samo na
     # validnim, ne-padding koracima), da se izbegne curenje informacija
     # iz validacionog seta u statistiku skaliranja.
-    #
-    # NAPOMENA: 'has_cfp' je binarni indikator (0.0/1.0), ne kontinuelna
-    # merna vrednost — skaliranje (mean/std) bi ga nepotrebno transformisalo
-    # u neke druge brojeve (npr. -1.8 / 0.4) bez ikakve koristi, i otežalo
-    # bi čitanje/debug. Izdvajamo ga PRE fit/transform i vraćamo nazad
-    # nepromenjenog nakon skaliranja ostalih feature-a.
-    has_cfp_idx = FEATURES_LIST.index("has_cfp")
-    scale_mask = np.array([i != has_cfp_idx for i in range(num_features)])
-
     scaler = StandardScaler()
     X_train_2d = X_train_raw.reshape(-1, num_features)
     valid_rows_train = ~np.all(X_train_2d == 0, axis=1)
-    scaler.fit(X_train_2d[valid_rows_train][:, scale_mask])
+    scaler.fit(X_train_2d[valid_rows_train])
 
-    def scale_keep_flag(X_raw):
-        X_2d = X_raw.reshape(-1, num_features)
-        X_scaled_2d = X_2d.copy()
-        X_scaled_2d[:, scale_mask] = scaler.transform(X_2d[:, scale_mask])
-        return X_scaled_2d.reshape(X_raw.shape)
-
-    X_train_scaled = scale_keep_flag(X_train_raw)
-    X_val_scaled = scale_keep_flag(X_val_raw)
+    X_train_scaled = scaler.transform(X_train_raw.reshape(-1, num_features)).reshape(X_train_raw.shape)
+    X_val_scaled = scaler.transform(X_val_raw.reshape(-1, num_features)).reshape(X_val_raw.shape)
 
     train_dataset_t = list(zip(
         torch.tensor(X_train_scaled, dtype=torch.float32),
@@ -210,60 +141,70 @@ def main():
 
     gru_checkpoint_path = os.path.join(checkpoint_dir, "gru_best_overall.pth")
     scaler_path = os.path.join(checkpoint_dir, "scaler.pkl")
-
+    patience = 15
+    stagnation_counter = 0
     print(f"\n--- Pokretanje treninga kroz {config.EPOCHS} epoha ---")
     for epoch in range(1, config.EPOCHS + 1):
         model.train()
-        running_train_loss = 0.0
-        total_train = 0
-
+        epoch_train_loss = 0.0
+        
         for batch_x, batch_y, batch_mask, batch_lengths in train_loader:
             batch_x = batch_x.to(device)
             batch_y = batch_y.to(device)
             batch_mask = batch_mask.to(device)
-
+            
             optimizer.zero_grad()
             preds = model(batch_x, batch_lengths)
             loss = criterion(preds, batch_y, batch_mask)
+            
             loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
-
-            running_train_loss += loss.item() * batch_x.size(0)
-            total_train += batch_x.size(0)
-
-        epoch_train_loss = running_train_loss / max(total_train, 1)
-        val_loss, val_mae, val_rmse, val_r2 = evaluate(model, val_loader, criterion, device)
-
+            
+            epoch_train_loss += loss.item() * batch_x.size(0)
+            
+        epoch_train_loss /= len(train_loader.dataset)
         train_losses.append(epoch_train_loss)
+        
+        # Evaluacija
+        val_loss, val_mae, val_rmse, val_r2 = evaluate(model, val_loader, criterion, device)
         val_losses.append(val_loss)
-
+        
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            
+            # === DODATO: Čuvanje najboljih težina u memoriji i reset brojača ===
+            best_model_wts = copy.deepcopy(model.state_dict())
+            stagnation_counter = 0
+            # ==================================================================
+            
             torch.save(model.state_dict(), gru_checkpoint_path)
             print(
                 f"   [Novi minimum] Epoha {epoch} -> Val MSE: {val_loss:.4f} "
                 f"| MAE: {val_mae:.3f} dB-ekv | RMSE: {val_rmse:.3f} | R2: {val_r2:.3f}"
             )
-
+        # === DODATO: Ako nema poboljšanja, uvećaj brojač stagnacije ===
+        else:
+            stagnation_counter += 1
+            print(
+                f"   [Bez poboljšanja] Epoha {epoch} -> Val MSE: {val_loss:.4f} "
+                f"(Stagnacija: {stagnation_counter}/{patience})"
+            )
+        # ==============================================================
+            
         if epoch % 5 == 0 or epoch == config.EPOCHS:
             print(
                 f"Epoha {epoch}/{config.EPOCHS} | Train MSE: {epoch_train_loss:.4f} "
                 f"| Val MSE: {val_loss:.4f} | Val MAE: {val_mae:.3f}"
             )
 
-    # Učitavamo NAJBOLJI checkpoint (ne poslednju epohu) da finalni
-    # izveštaj odgovara modelu koji je stvarno sačuvan na disku.
-    model.load_state_dict(torch.load(gru_checkpoint_path, map_location=device))
-    final_val_loss, final_mae, final_rmse, final_r2 = evaluate(model, val_loader, criterion, device)
+        # === DODATO: Provera uslova za Early Stopping prekid ===
+        if stagnation_counter >= patience:
+            print(f"\n[EARLY STOPPING] Trening prekinut u epohi {epoch} jer se Val MSE nije smanjio tokom poslednjih {patience} epoha.")
+            break
 
-    print("\n================ REZULTATI TRENINGA (najbolji checkpoint) ================")
-    print(f"Val MSE:  {final_val_loss:.4f}")
-    print(f"Val MAE:  {final_mae:.3f}  (proseč. greška u jedinicama VF_mean)")
-    print(f"Val RMSE: {final_rmse:.3f}")
-    print(f"Val R²:   {final_r2:.3f}  (1.0 = perfektno, 0.0 = isto kao predikcija prosekom, <0 = lošije od proseka)")
-    print("============================================================================")
+    print("\n================ REZULTATI TRENINGA ================")
+    print(f"Najbolji Val MSE: {best_val_loss:.4f}")
+    print("======================================================")
 
     plt.figure(figsize=(8, 5))
     plt.plot(train_losses, linestyle="--", color="blue", label="Train MSE")

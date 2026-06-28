@@ -11,10 +11,10 @@ class Pacijent(db.Model):
     patient_id        = db.Column(db.Integer, primary_key=True, autoincrement=True)
     first_name        = db.Column(db.String(100), nullable=False)
     last_name         = db.Column(db.String(100), nullable=False)
-    gender            = db.Column(db.String(10))
+    gender            = db.Column(db.Enum("M", "F"), nullable=False)
     birth_date        = db.Column(db.Date, nullable=False)
-    cct               = db.Column(db.Float)
-    glaucoma_category = db.Column(db.String(100))
+    cct               = db.Column(db.Float, nullable=False)
+    glaucoma_category = db.Column(db.Enum("None", "ACG", "OAG", name="glaucoma_categories"), nullable=False)
 
     
     pregledi = db.relationship("Pregled", back_populates="pacijent", cascade="all, delete-orphan")

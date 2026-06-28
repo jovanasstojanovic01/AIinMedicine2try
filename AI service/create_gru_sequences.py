@@ -3,6 +3,7 @@ import re
 import numpy as np
 import pandas as pd
 import config
+from utils import correct_IOP
 
 # Slepe tačke i nepouzdana merenja su markirana sa -1 u GRAPE VF kolonama.
 VF_BLIND_SPOT_VALUE = -1
@@ -10,24 +11,6 @@ VF_BLIND_SPOT_VALUE = -1
 # Pattern za flatten-ovane VF kolone koje pravi merge_grape_data.py
 # (flatten_multirow_columns): "VF_0", "VF_1", ..., "VF_60".
 VF_COLUMN_PATTERN = re.compile(r"^VF_(\d+)$")
-
-# JEDAN zajednički izvor istine za listu feature-a koji ulaze u GRU.
-# train.py uvozi OVU konstantu (umesto da je duplira lokalno), da se ne
-# ponovi bug iz ranije verzije pipeline-a gde su dve skripte mapirale
-# isti Excel na različita imena kolona zbog nezavisnih, nesinhronizovanih
-# definicija.
-# JEDAN zajednički izvor istine za listu feature-a koji ulaze u GRU.
-# train.py uvozi OVU konstantu (umesto da je duplira lokalno), da se ne
-# ponovi bug iz ranije verzije pipeline-a gde su dve skripte mapirale
-# isti Excel na različita imena kolona zbog nezavisnih, nesinhronizovanih
-# definicija.
-#
-# 'Interval_Years' = vreme (u godinama) od PRETHODNE posete. Baseline
-# (prva poseta) ima 0.0 po definiciji — referentna tačka u vremenu. Ovaj
-# feature je bitan jer VF promene zavise od toga koliko je vremena
-# prošlo od prethodnog merenja — bez njega, model ne razlikuje "sledeća
-# poseta za 2 meseca" od "sledeća poseta za 2 godine".
-FEATURES_LIST = ["IOP", "vCDR", "hCDR", "aCDR", "Rim_Area_Pixels", "has_cfp", "Interval_Years", "VF_mean"]
 
 
 def get_vf_columns(df):
@@ -88,34 +71,37 @@ def main():
     df_b["VF_mean"] = compute_vf_mean(df_b, vf_cols_b)
     df_f["VF_mean"] = compute_vf_mean(df_f, vf_cols_f)
 
-    # Baseline poseta je uvek vizit broj 0 u hronologiji pacijenta, i
-    # nema "prethodnu" posetu — interval od prethodne posete je 0 po
-    # definiciji (referentna tačka u vremenu).
+    # Baseline poseta je uvek vizit broj 0 u hronologiji pacijenta.
     df_b["Visit Number"] = 0
-    df_b["Interval_Years"] = 0.0
 
-    # Follow-up sheet ima kolonu "Interval Years" (sa razmakom, kako je
-    # u originalnom Excelu) — preimenujemo u "Interval_Years" da se
-    # poklopi sa FEATURES_LIST i sa baseline kolonom.
-    if "Interval Years" in df_f.columns:
-        df_f = df_f.rename(columns={"Interval Years": "Interval_Years"})
-
-    features_list = FEATURES_LIST
+    # vCDR/hCDR/aCDR/Rim_Area_Pixels dolaze iz merge_grape_data.py (UNet
+    # ekstrakcija po slici). IOP postoji direktno u oba sheeta. VF_mean
+    # je upravo izračunat gore.
+    features_list = ["IOP_corrected", "vCDR", "hCDR", "aCDR", "Rim_Area_Pixels", "Interval Years","VF_mean"]
     id_cols = ["Subject Number", "Laterality", "Visit Number"]
+    baseline_only_cols = ["CCT"]
 
-    missing_b = [c for c in features_list if c not in df_b.columns]
-    missing_f = [c for c in features_list if c not in df_f.columns]
+    required_b = id_cols + ["IOP", "vCDR", "hCDR", "aCDR", "Rim_Area_Pixels", "VF_mean"] + baseline_only_cols
+    required_f = id_cols + ["IOP", "vCDR", "hCDR", "aCDR", "Rim_Area_Pixels", "Interval Years","VF_mean"] # followup nema CCT
+
+    missing_b = [c for c in required_b if c not in df_b.columns]
+    missing_f = [c for c in required_f if c not in df_f.columns]
     if missing_b or missing_f:
-        print(f"[GREŠKA] Nedostaju feature kolone. Baseline: {missing_b}, Follow-up: {missing_f}")
+        print(f"[GREŠKA] Nedostaju kolone u izvornim fajlovima. Baseline fali: {missing_b}, Follow-up fali: {missing_f}")
         return
 
-    df_b_sub = df_b[id_cols + features_list].copy()
-    df_f_sub = df_f[id_cols + features_list].copy()
+    df_b_sub = df_b[required_b].copy()
+    df_b_sub["Interval Years"] = 0.0
+    df_f_sub = df_f[required_f].copy()
+    df_f_sub["CCT"] = np.nan
 
     df_all = pd.concat([df_b_sub, df_f_sub], axis=0, ignore_index=True)
     df_all = df_all.dropna(subset=["Subject Number", "Laterality", "Visit Number"])
     df_all = df_all.sort_values(by=["Subject Number", "Laterality", "Visit Number"]).reset_index(drop=True)
-
+    print("-> Propagiranje baseline CCT vrednosti kroz follow-up posete...")
+    df_all["CCT"] = df_all.groupby(["Subject Number", "Laterality"])["CCT"].transform("first")
+    print("-> Računanje korigovanog IOP-a...")
+    df_all["IOP_corrected"] = df_all.apply(lambda row: correct_IOP(row["IOP"], row["CCT"]), axis=1)
     print("-> Kreiranje per-visit sekvenci (next-step VF_mean predikcija)...")
 
     num_features = len(features_list)

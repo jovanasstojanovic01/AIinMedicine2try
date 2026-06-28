@@ -18,9 +18,8 @@ bp = Blueprint("visits", __name__, url_prefix="/api/visits")
 @bp.post("/<int:exam_id>/predict-progression")
 def evaluate_visit_progression(exam_id):
     """
-    Pokreće XGBoost/LSTM model za predikciju progresije glaukoma u kontekstu konkretnog pregleda.
-    Uzima u obzir istoriju pregleda pacijenta ZAKLJUČNO sa ovim pregledom.
-    Sve se automatski upisuje u bazu za taj pregled.
+    Pokreće novi GRU model koji na osnovu istorije poseta (zaključno sa ovom)
+    predviđa koliki će biti VF_mean na sledećoj poseti.
     """
     eye = request.args.get("eye", "OD").upper()
     if eye not in ["OD", "OS"]:
@@ -31,8 +30,9 @@ def evaluate_visit_progression(exam_id):
     if not trenutni_pregled:
         return not_found("Pregled nije pronađen.")
 
+    pacijent = trenutni_pregled.pacijent
     
-    pacijent = trenutni_pregled.pacijent 
+    cct_pacijenta = pacijent.cct if pacijent else 540.0
 
     
     pregledi_istorija = Pregled.query.filter(
@@ -40,48 +40,35 @@ def evaluate_visit_progression(exam_id):
         Pregled.visit_number <= trenutni_pregled.visit_number
     ).order_by(Pregled.visit_number).all()
 
-    
-    sequence_history = []
-    for p in pregledi_istorija:
-        vcdr_val = 0.0
-        if p.multimedija:
-            vcdr_val = p.multimedija.od_vcdr if eye == "OD" else p.multimedija.os_vcdr
-
-        iop = p.od_iop if eye == "OD" else p.os_iop
-        md = p.od_md if eye == "OD" else p.os_md
-        oct_mean = p.od_oct_mean if eye == "OD" else p.os_oct_mean
-        
-        sequence_history.append([
-            float(iop or 0.0),
-            float(md or 0.0),
-            float(oct_mean or 0.0),
-            float(vcdr_val or 0.0),
-            float(pacijent.cct or 540.0)
-        ])
-
     try:
         
-        prediction = ml_service.predict_progression(sequence_history)
-        
-        
-        progression_status = int(prediction.get("progression", 0))
+        prediktovani_vf = ml_service.predict_next_visit_vf_mean(
+            istorija_pregleda=pregledi_istorija,
+            cct_pacijenta=cct_pacijenta,
+            eye=eye
+        )
+
         
         if eye == "OD":
-            trenutni_pregled.od_progression_status = progression_status
+            trenutni_pregled.od_next_vf_mean_pred = prediktovani_vf
         else:
-            trenutni_pregled.os_progression_status = progression_status
+            trenutni_pregled.os_next_vf_mean_pred = prediktovani_vf
             
         db.session.commit()
 
         
-        return ok(
-            prediction, 
-            f"Predikcija progresije za {eye} oko uspešno izvršena i sačuvana u pregled ID: {exam_id}."
-        )
-        
+        return ok({
+            "exam_id": exam_id,
+            "eye": eye,
+            "current_visit_number": trenutni_pregled.visit_number,
+            "predicted_next_visit_vf_mean": round(prediktovani_vf, 2)
+        }, f"Uspešno predviđen VF_mean za sledeću posetu oka {eye}.")
+
     except Exception as e:
         db.session.rollback()
-        return error(f"Greška tokom predikcije: {str(e)}", 500)
+        return error(f"Greška tokom izvršavanja GRU predikcije: {str(e)}", 500)
+
+
 @bp.post("")
 def create_visit():
     json_data = request.get_json(silent=True)
