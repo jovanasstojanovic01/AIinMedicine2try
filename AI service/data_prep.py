@@ -23,21 +23,20 @@ def main():
     followup_df = pd.read_excel(followup_path)
     features_df = pd.read_excel(features_path)
 
-    # Pravilno mapiranje kolona iz drugog reda (kako si navela)
+    # NAPOMENA: merge_grape_data.py (ispravljena verzija) sada čita Excel
+    # sa multi-row headerom i flatten-uje kolone PRE snimanja, npr.
+    # "OCT RNFL thickness" + "Mean" -> "OCT RNFL thickness_Mean". Stari
+    # pristup sa "Unnamed: N" je bio fragilan (zavisio od tačnog broja
+    # kolona ispred) i tiho je mogao da pogodi pogrešnu kolonu. Ovde samo
+    # preimenujemo te već-jasne nazive u kraće radne nazive.
     baseline_mapping = {
-        'Unnamed: 8': 'PLR2',
-        'Unnamed: 9': 'PLR3',
-        'Unnamed: 10': 'MD',
-        'OCT RNFL thickness': 'Mean',
-        'Unnamed: 12': 'S',
-        'Unnamed: 13': 'N',
-        'Unnamed: 14': 'I',
-        'Unnamed: 15': 'T'
+        'OCT RNFL thickness_Mean': 'Mean',
+        'OCT RNFL thickness_S': 'S',
+        'OCT RNFL thickness_N': 'N',
+        'OCT RNFL thickness_I': 'I',
+        'OCT RNFL thickness_T': 'T',
     }
     baseline_df.rename(columns=baseline_mapping, inplace=True)
-
-    if 'Unnamed: 10' in followup_df.columns and 'MD' not in followup_df.columns:
-        followup_df.rename(columns={'Unnamed: 10': 'MD'}, inplace=True)
 
     print("Loading names datasets...")
     female_names_path = os.path.join(config.DATA_PREP, "prep", "female_data.xlsx")
@@ -58,22 +57,10 @@ def main():
 
     print(f"Loaded: Baseline ({len(baseline_df)} rows), Follow-up ({len(followup_df)} rows).")
 
-    print("\nCreating Patients table with Baseline Progression Flags (PLR2, PLR3, MD)...")
-    
-    # Prvo pravimo rečnik flegova za svakog pacijenta posebno za OD i OS
-    patient_flags = {}
-    for subj_id, group in baseline_df.groupby('Subject Number'):
-        od_group = group[group['Laterality'] == 'OD']
-        os_group = group[group['Laterality'] == 'OS']
-        
-        patient_flags[subj_id] = {
-            'od_plr2': get_val(od_group, 'PLR2'),
-            'od_plr3': get_val(od_group, 'PLR3'),
-            'od_md': get_val(od_group, 'MD'),
-            'os_plr2': get_val(os_group, 'PLR2'),
-            'os_plr3': get_val(os_group, 'PLR3'),
-            'os_md': get_val(os_group, 'MD')
-        }
+    print("\nCreating Patients table (bez Progression Status flegova — PLR2/PLR3/MD "
+          "se izbacuju jer nisu nešto što lekar unosi niti što treba da postoji kao "
+          "atribut PACIJENTA; dijagnoza se sada prati PO PREGLEDU, vidi dalje "
+          "'Diagnosis' u table_exams)...")
 
     patients_raw = baseline_df.drop_duplicates(subset=['Subject Number']).copy()
     current_year = 2026
@@ -118,7 +105,9 @@ def main():
         start_date = datetime(random.randint(2015, 2020), random.randint(1, 12), random.randint(1, 28))
         baseline_exam_dates[subj_id] = start_date
 
-    # Konstruisanje nove tabele pacijenata sa uključenim flegovima
+    # Konstruisanje tabele pacijenata - BEZ progression flegova. Pacijent
+    # tabela opisuje OSOBU (relativno stabilne atribute), ne nešto
+    # vremenski-zavisno kao dijagnozu — ona se prati po pregledu, ne ovde.
     patients_table = pd.DataFrame({
         'patient_id': patients_raw['Subject Number'],
         'first_name': first_name_list,
@@ -127,14 +116,8 @@ def main():
         'birth_date': birth_dates,
         'cct': patients_raw['CCT'].fillna(0.0),
         'glaucoma_category': patients_raw['Category of Glaucoma'].fillna('OAG'),
-        # Pridruživanje flegova koji su izbačeni iz pregleda
-        'od_plr2': [patient_flags[sid]['od_plr2'] for sid in patients_raw['Subject Number']],
-        'od_plr3': [patient_flags[sid]['od_plr3'] for sid in patients_raw['Subject Number']],
-        'od_md_flag': [patient_flags[sid]['od_md'] for sid in patients_raw['Subject Number']],
-        'os_plr2': [patient_flags[sid]['os_plr2'] for sid in patients_raw['Subject Number']],
-        'os_plr3': [patient_flags[sid]['os_plr3'] for sid in patients_raw['Subject Number']],
-        'os_md_flag': [patient_flags[sid]['os_md'] for sid in patients_raw['Subject Number']]
     })
+
 
     print("Preparing and propagating missing timeline data...")
     baseline_df['Visit Number'] = 0
@@ -143,8 +126,13 @@ def main():
     all_data_raw = pd.concat([baseline_df, followup_df], ignore_index=True)
     all_data_raw.sort_values(by=['Subject Number', 'Laterality', 'Visit Number'], inplace=True, ignore_index=True)
 
-    # Uklanjamo 'MD' iz kolona koje se propagiraju kroz preglede jer je on sada deo pacijenta
-    potential_columns = ['Corresponding CFP', 'Mean', 'S', 'N', 'I', 'T', 'vCDR', 'hCDR', 'aCDR', 'Rim_Area_Pixels']
+    # NAPOMENA: 'Diagnosis' (REFUGE2 predikcija po slici: Healthy /
+    # Glaucoma Suspect) se forward-fill-uje na ISTI način kao i ostali
+    # parametri izvedeni iz slike (vCDR, Mean OCT, itd). To znači: ako
+    # konkretna poseta nema svoju sliku, dijagnoza se prepisuje sa
+    # PRETHODNOG pregleda istog oka — tačno traženo ponašanje, bez
+    # potrebe za posebnom logikom.
+    potential_columns = ['Corresponding CFP', 'Mean', 'S', 'N', 'I', 'T', 'vCDR', 'hCDR', 'aCDR', 'Rim_Area_Pixels', 'Diagnosis']
     columns_to_fill = [col for col in potential_columns if col in all_data_raw.columns]
     
     if columns_to_fill:
@@ -198,40 +186,18 @@ def main():
         chosen_therapy = random.choice(therapy_options)
         chosen_comment = random.choice(comments_options)
 
-        exam_data = {
-            'patient_id': int(subj_id),
-            'visit_number': int(visit_num),
-            'exam_date': exam_date_str,
-            
-            # Right Eye (OD) - BEZ MD KOLONE
-            'od_iop': od_iop_val,
-            'od_oct_mean': get_val(od_row, 'Mean'),
-            'od_oct_s': get_val(od_row, 'S'),
-            'od_oct_n': get_val(od_row, 'N'),
-            'od_oct_i': get_val(od_row, 'I'),
-            'od_oct_t': get_val(od_row, 'T'),
-            'od_progression_status': get_val(od_row, 'Progression Status') if visit_num == 0 else None,
-            
-            # Left Eye (OS) - BEZ MD KOLONE
-            'os_iop': os_iop_val,
-            'os_oct_mean': get_val(os_row, 'Mean'),
-            'os_oct_s': get_val(os_row, 'S'),
-            'os_oct_n': get_val(os_row, 'N'),
-            'os_oct_i': get_val(os_row, 'I'),
-            'os_oct_t': get_val(os_row, 'T'),
-            'os_progression_status': get_val(os_row, 'Progression Status') if visit_num == 0 else None,
-            
-            'physician_comment': chosen_comment,
-            'therapy': chosen_therapy
-        }
-        exam_rows.append(exam_data)
-        
+        # Lookup slike i UNet feature-a po oku PRE exam_data, jer
+        # determine_diagnosis (fallback za Predicted_Diagnosis) treba
+        # ove podatke. Forward-fill (ffill) je već popunio 'Diagnosis' u
+        # od_row/os_row za sve preglede koji imaju PRETHODNI pregled sa
+        # slikom — ovaj blok pokriva samo rubni slučaj kad je baš PRVA
+        # poseta oka bez sopstvene slike.
         od_img = get_val(od_row, 'Corresponding CFP', is_float=False)
         os_img = get_val(os_row, 'Corresponding CFP', is_float=False)
-        
+
         od_feat = features_df[features_df['Corresponding CFP'] == od_img] if od_img else pd.DataFrame()
         os_feat = features_df[features_df['Corresponding CFP'] == os_img] if os_img else pd.DataFrame()
-        
+
         def determine_feat(row, feat_df, col):
             val = get_val(row, col)
             if val is not None:
@@ -239,6 +205,56 @@ def main():
             if not feat_df.empty and col in feat_df.columns:
                 return float(feat_df[col].iloc[0]) if pd.notna(feat_df[col].iloc[0]) else None
             return None
+
+        def determine_diagnosis(diagnosis_already_filled, feat_df):
+            """
+            Fallback za slučaj kad forward-fill (ffill po Subject
+            Number+Laterality) nije imao šta da propagira — npr. kad je
+            BAŠ PRVA poseta tog oka bez svoje slike. U tom (rubnom)
+            slučaju nema "prethodnog pregleda" da se prepiše, pa se
+            uzima Diagnosis direktno iz features_df preko slike ako ona
+            ipak postoji u toj poseti, a u suprotnom ostaje None
+            (lekar nema AI predlog za tu posetu, mora sam da unese).
+            """
+            if diagnosis_already_filled is not None:
+                return diagnosis_already_filled
+            if not feat_df.empty and 'Diagnosis' in feat_df.columns:
+                val = feat_df['Diagnosis'].iloc[0]
+                return val if pd.notna(val) else None
+            return None
+
+        exam_data = {
+            'patient_id': int(subj_id),
+            'visit_number': int(visit_num),
+            'exam_date': exam_date_str,
+            
+            # Right Eye (OD)
+            'od_iop': od_iop_val,
+            'od_oct_mean': get_val(od_row, 'Mean'),
+            'od_oct_s': get_val(od_row, 'S'),
+            'od_oct_n': get_val(od_row, 'N'),
+            'od_oct_i': get_val(od_row, 'I'),
+            'od_oct_t': get_val(od_row, 'T'),
+            # Predicted_Diagnosis (REFUGE2): praćeno PO PREGLEDU, ne po
+            # pacijentu i ne po slici. Prvo se pokuša forward-filled
+            # vrednost (prepisana sa prethodnog pregleda ako ova poseta
+            # nema sopstvenu sliku); ako ni to ne postoji (prva poseta
+            # bez slike), pada se na direktan lookup iz features_df.
+            'od_diagnosis': determine_diagnosis(get_val(od_row, 'Diagnosis', is_float=False), od_feat),
+            
+            # Left Eye (OS)
+            'os_iop': os_iop_val,
+            'os_oct_mean': get_val(os_row, 'Mean'),
+            'os_oct_s': get_val(os_row, 'S'),
+            'os_oct_n': get_val(os_row, 'N'),
+            'os_oct_i': get_val(os_row, 'I'),
+            'os_oct_t': get_val(os_row, 'T'),
+            'os_diagnosis': determine_diagnosis(get_val(os_row, 'Diagnosis', is_float=False), os_feat),
+            
+            'physician_comment': chosen_comment,
+            'therapy': chosen_therapy
+        }
+        exam_rows.append(exam_data)
 
         multimedia_data = {
             'patient_id': int(subj_id),
@@ -257,6 +273,7 @@ def main():
             'os_rim_area_pixels': determine_feat(os_row, os_feat, 'Rim_Area_Pixels'),
         }
         multimedia_rows.append(multimedia_data)
+
 
     exams_table = pd.DataFrame(exam_rows)
     multimedia_table = pd.DataFrame(multimedia_rows)

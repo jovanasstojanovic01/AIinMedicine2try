@@ -59,7 +59,12 @@ def process_grape_image(img_path, model, transform):
         "vCDR": clinical_params.get("vCDR", 0.0),
         "hCDR": clinical_params.get("hCDR", 0.0),
         "aCDR": clinical_params.get("aCDR", 0.0),
-        "Rim_Area_Pixels": clinical_params.get("rim_area_pixels", 0.0) or clinical_params.get("Rim_Area_Pixels", 0.0)
+        "Rim_Area_Pixels": clinical_params.get("rim_area_pixels", 0.0) or clinical_params.get("Rim_Area_Pixels", 0.0),
+        # NOVO: diagnosis je REFUGE2 već računao (Healthy / Glaucoma Suspect
+        # / Positive) ali se ranije odbacivao na izlazu iz ove funkcije.
+        # Potreban je da bismo mogli da popunimo Predicted_Diagnosis po
+        # pregledu u data_prep.py, bez ponovnog pozivanja modela.
+        "Diagnosis": clinical_params.get("diagnosis", "Healthy")
     }
 
 def main():
@@ -79,10 +84,20 @@ def main():
     df_baseline = pd.read_excel(grape_excel_path, sheet_name=0)
     df_followup = pd.read_excel(grape_excel_path, sheet_name=1)
     
+    # ISPRAVKA: "/" je GRAPE-ova oznaka da CFP/OCT NE postoji za tu posetu
+    # (videti rad: "the symbol '/' ... represents that no corresponding
+    # CFP or OCT examination was generated"). Bez ovog filtera, "/" se
+    # tretirao kao da je ime fajla slike — UNet bi pokušao (i neuspešno)
+    # da je obradi, a kasnije bi merge u merge_grape_data.py mogao
+    # pogrešno spojiti taj "red za '/'" na SVE posete koje nemaju sliku,
+    # dajući im lažnu (identičnu) Diagnosis/vCDR vrednost umesto NaN.
     images_baseline = df_baseline['Corresponding CFP'].dropna().unique()
     images_followup = df_followup['Corresponding CFP'].dropna().unique()
-    all_unique_images = sorted(list(set(images_baseline) | set(images_followup)))
-    print(all_unique_images)
+    all_unique_images = sorted(
+        img for img in (set(images_baseline) | set(images_followup))
+        if str(img).strip() != "/"
+    )
+    #print(all_unique_images)
     print(f"-> Ukupno detektovano {len(all_unique_images)} jedinstvenih slika za ekstrakciju.")
     
     print(f"-> Učitavanje UNet-a sa checkpoints/best_model.pth na {config.DEVICE}...")
@@ -116,7 +131,7 @@ def main():
     if extracted_features_list:
         features_df = pd.DataFrame(extracted_features_list)
         
-        ordered_cols = ['Corresponding CFP', 'vCDR', 'hCDR', 'aCDR', 'Rim_Area_Pixels']
+        ordered_cols = ['Corresponding CFP', 'vCDR', 'hCDR', 'aCDR', 'Rim_Area_Pixels', 'Diagnosis']
         features_df = features_df[ordered_cols]
         
         os.makedirs(config.OUTPUT_DIR, exist_ok=True)
