@@ -140,7 +140,60 @@ def main():
 
     print("Merging left and right eye records into clinical exams...")
     exam_rows = []
-    multimedia_rows = []
+
+    def determine_feat(row, feat_df, col):
+        val = get_val(row, col)
+        if val is not None:
+            return val
+        if not feat_df.empty and col in feat_df.columns:
+            return float(feat_df[col].iloc[0]) if pd.notna(feat_df[col].iloc[0]) else None
+        return None
+
+    # multimedia_by_image: jedan ZAJEDNIČKI cache za OD i OS slike, jer
+    # ista logika (jedna slika = jedan multimedia zapis) važi za oba
+    # oka, i u principu ne postoji razlog da imena fajlova kolidiraju
+    # između OD/OS (sufiks _OD_/_OS_ je već deo naziva).
+    # Mapira: naziv_slike (str) -> multimedia_id (int)
+    multimedia_by_image = {}
+    multimedia_rows = []  # red po JEDINSTVENOJ slici, ne po pregledu
+
+    def get_or_create_multimedia_id(image_name, feat_df, row, vcdr_col, hcdr_col, acdr_col, rim_col):
+        """
+        Vraća postojeći multimedia_id za ovu sliku ako je već viđena
+        (deduplikacija — više pregleda koji DELE istu sliku referišu
+        ISTI multimedia zapis, ne prave svoj kopiran red). Ako slika
+        nije viđena, kreira NOV multimedia red sa UNet parametrima i
+        vraća njen ID.
+
+        Ovo je ISPRAVKA za originalni bug: ranija verzija je pravila
+        nov multimedia red ZA SVAKI exam (čak i kad je slika identična
+        prethodnoj, npr. ffill-ovana jer poseta nema sopstvenu sliku),
+        što je dupliralo vCDR/hCDR/aCDR/Rim_Area_Pixels bez potrebe i
+        dovelo do toga da multimedia_id == exam_id uvek (lažna 1:1
+        relacija umesto stvarne 1:N).
+        """
+        if image_name is None:
+            return None
+
+        if image_name in multimedia_by_image:
+            return multimedia_by_image[image_name]
+
+        vcdr = determine_feat(row, feat_df, vcdr_col)
+        hcdr = determine_feat(row, feat_df, hcdr_col)
+        acdr = determine_feat(row, feat_df, acdr_col)
+        rim = determine_feat(row, feat_df, rim_col)
+
+        new_id = len(multimedia_rows) + 1
+        multimedia_rows.append({
+            'multimedia_id': new_id,
+            'image_path': image_name,
+            'vcdr': vcdr,
+            'hcdr': hcdr,
+            'acdr': acdr,
+            'rim_area_pixels': rim,
+        })
+        multimedia_by_image[image_name] = new_id
+        return new_id
 
     grouped = all_data_raw.groupby(['Subject Number', 'Visit Number'])
 
@@ -198,14 +251,6 @@ def main():
         od_feat = features_df[features_df['Corresponding CFP'] == od_img] if od_img else pd.DataFrame()
         os_feat = features_df[features_df['Corresponding CFP'] == os_img] if os_img else pd.DataFrame()
 
-        def determine_feat(row, feat_df, col):
-            val = get_val(row, col)
-            if val is not None:
-                return val
-            if not feat_df.empty and col in feat_df.columns:
-                return float(feat_df[col].iloc[0]) if pd.notna(feat_df[col].iloc[0]) else None
-            return None
-
         def determine_diagnosis(diagnosis_already_filled, feat_df):
             """
             Fallback za slučaj kad forward-fill (ffill po Subject
@@ -223,11 +268,28 @@ def main():
                 return val if pd.notna(val) else None
             return None
 
+        # Dedup lookup: vraća POSTOJEĆI multimedia_id ako je ova slika
+        # već viđena (npr. ffill-ovana sa prethodne posete istog oka),
+        # ili pravi NOV multimedia red samo ako je slika stvarno nova.
+        od_multimedia_id = get_or_create_multimedia_id(
+            od_img, od_feat, od_row, 'vCDR', 'hCDR', 'aCDR', 'Rim_Area_Pixels'
+        )
+        os_multimedia_id = get_or_create_multimedia_id(
+            os_img, os_feat, os_row, 'vCDR', 'hCDR', 'aCDR', 'Rim_Area_Pixels'
+        )
+
         exam_data = {
             'patient_id': int(subj_id),
             'visit_number': int(visit_num),
             'exam_date': exam_date_str,
-            
+
+            # FK ka multimedia tabeli — NULL ako ova poseta (i nijedna
+            # prethodna poseta istog oka) nema sliku. Smer FK je OVDE
+            # (exams -> multimedia), jer je relacija stvarno 1:N (jedna
+            # slika može biti referisana sa više pregleda), ne obrnuto.
+            'od_multimedia_id': od_multimedia_id,
+            'os_multimedia_id': os_multimedia_id,
+
             # Right Eye (OD)
             'od_iop': od_iop_val,
             'od_oct_mean': get_val(od_row, 'Mean'),
@@ -256,37 +318,19 @@ def main():
         }
         exam_rows.append(exam_data)
 
-        multimedia_data = {
-            'patient_id': int(subj_id),
-            'visit_number': int(visit_num),
-            'od_image': od_img if od_img else None,
-            'os_image': os_img if os_img else None,
-            
-            'od_vcdr': determine_feat(od_row, od_feat, 'vCDR'),
-            'od_hcdr': determine_feat(od_row, od_feat, 'hCDR'),
-            'od_acdr': determine_feat(od_row, od_feat, 'aCDR'),
-            'od_rim_area_pixels': determine_feat(od_row, od_feat, 'Rim_Area_Pixels'),
-            
-            'os_vcdr': determine_feat(os_row, os_feat, 'vCDR'),
-            'os_hcdr': determine_feat(os_row, os_feat, 'hCDR'),
-            'os_acdr': determine_feat(os_row, os_feat, 'aCDR'),
-            'os_rim_area_pixels': determine_feat(os_row, os_feat, 'Rim_Area_Pixels'),
-        }
-        multimedia_rows.append(multimedia_data)
-
 
     exams_table = pd.DataFrame(exam_rows)
+    # multimedia_table je već kompletna iz get_or_create_multimedia_id:
+    # jedan red po JEDINSTVENOJ slici, sa multimedia_id dodeljenim u
+    # redosledu prvog viđenja. NE sme se ponovo sortirati ovde, jer bi
+    # to promenilo redosled redova bez ažuriranja multimedia_id vrednosti
+    # koje su exam_rows VEĆ zapamtili (od_multimedia_id/os_multimedia_id) —
+    # sortiranje bi raskinulo tu vezu.
     multimedia_table = pd.DataFrame(multimedia_rows)
 
     print("Merging and formatting final tables...")
     exams_table.sort_values(by=['patient_id', 'visit_number'], inplace=True, ignore_index=True)
-    multimedia_table.sort_values(by=['patient_id', 'visit_number'], inplace=True, ignore_index=True)
-
     exams_table.insert(0, 'exam_id', exams_table.index + 1)
-    multimedia_table.insert(0, 'multimedia_id', multimedia_table.index + 1)
-
-    multimedia_table.insert(1, 'exam_id', exams_table['exam_id'])
-    multimedia_table.drop(columns=['patient_id', 'visit_number'], inplace=True)
 
     print("Pipeline script executed successfully!")
 
