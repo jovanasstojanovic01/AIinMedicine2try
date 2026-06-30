@@ -1,9 +1,13 @@
 import pandas as pd
 import numpy as np
 import os
+import re
 import config
 from datetime import datetime, timedelta
 import random
+
+VF_COLUMN_PATTERN = re.compile(r"^VF_(\d+)$")
+
 
 def get_val(row, col_name, is_float=True):
     if row.empty or col_name not in row.columns:
@@ -12,6 +16,51 @@ def get_val(row, col_name, is_float=True):
     if pd.isna(val) or val == '/' or str(val).strip() == '':
         return None
     return float(val) if is_float else val
+
+
+def get_vf_columns(df):
+    """
+    Vraća listu VF_* kolona ('VF_0'...'VF_60'), sortiranih po numeričkom
+    indeksu (ne leksikografski — 'VF_10' ne sme doći pre 'VF_2'). Isti
+    pristup kao u create_gru_sequences.py, da se VF redosled ne raskorači
+    između GRU pipeline-a i ove tabele.
+    """
+    cols = [c for c in df.columns if VF_COLUMN_PATTERN.match(str(c))]
+    cols.sort(key=lambda c: int(VF_COLUMN_PATTERN.match(c).group(1)))
+    return cols
+
+
+def serialize_vf(row, vf_cols):
+    """
+    Spaja 61 VF vrednost jednog reda (oka, jedne posete) u JEDAN string
+    razdvojen zarezima, u rasporedu VF_0,VF_1,...,VF_60 — umesto da se
+    doda 61 zasebna kolona u exams tabelu. Vrednost -1 (slepa tačka,
+    GRAPE konvencija) i NaN se čuvaju KAO ŠTO JESU u stringu (npr.
+    '21,-1,18,...') — ne brišu se niti zaokružuju ovde, jer to gubi
+    informaciju o tome koje su lokacije slepe tačke vs stvarno
+    izmerene. Ko god kasnije parsira ovaj string (npr. za VF_mean
+    izračun) treba sam da odluči kako tretira -1/NaN, isto kao što to
+    već radi compute_vf_mean u create_gru_sequences.py.
+
+    Vraća None ako red nema nijednu VF vrednost (npr. poseta bez VF
+    testa), umesto stringa punog praznina, da se jasno razlikuje
+    "nema VF testa" od "VF test sa svim NaN" (što se ionako ne bi smelo
+    desiti, ali bolje eksplicitno nego tiho).
+    """
+    if row.empty or not vf_cols:
+        return None
+
+    values = row[vf_cols].iloc[0]
+    if values.isna().all():
+        return None
+
+    parts = []
+    for v in values:
+        if pd.isna(v):
+            parts.append("")  # prazno mesto čuva POZICIJU u nizu od 61
+        else:
+            parts.append(str(v) if float(v).is_integer() is False else str(int(v)))
+    return ",".join(parts)
 
 def main():
     print("Loading core files...")
@@ -125,6 +174,17 @@ def main():
 
     all_data_raw = pd.concat([baseline_df, followup_df], ignore_index=True)
     all_data_raw.sort_values(by=['Subject Number', 'Laterality', 'Visit Number'], inplace=True, ignore_index=True)
+
+    # VF_* kolone (VF_0...VF_60) se NE forward-fill-uju kao vCDR/
+    # Diagnosis/OCT — VF (perimetrija) je test koji se radi (ili ne) NA
+    # TOJ KONKRETNOJ poseti, za razliku od fundus slike koja realno može
+    # ostati "ista" ako nije ponovo snimljena. Ako poseta nema VF
+    # rezultat, serialize_vf niže vraća None — to je tačno željeno
+    # ponašanje (eksplicitno "nema VF za ovu posetu"), ne nešto što
+    # treba prepisivati sa prethodnog pregleda.
+    vf_columns = get_vf_columns(all_data_raw)
+    if not vf_columns:
+        print("[UPOZORENJE] Nisu pronađene VF_* kolone u baseline/follow-up tabelama — od_vf/os_vf će biti None za sve preglede.")
 
     # NAPOMENA: 'Diagnosis' (REFUGE2 predikcija po slici: Healthy /
     # Glaucoma Suspect) se forward-fill-uje na ISTI način kao i ostali
@@ -282,14 +342,41 @@ def main():
             'patient_id': int(subj_id),
             'visit_number': int(visit_num),
             'exam_date': exam_date_str,
+
+            # FK ka multimedia tabeli — NULL ako ova poseta (i nijedna
+            # prethodna poseta istog oka) nema sliku. Smer FK je OVDE
+            # (exams -> multimedia), jer je relacija stvarno 1:N (jedna
+            # slika može biti referisana sa više pregleda), ne obrnuto.
             'od_multimedia_id': od_multimedia_id,
             'os_multimedia_id': os_multimedia_id,
 
+            # Right Eye (OD)
             'od_iop': od_iop_val,
+            'od_oct_mean': get_val(od_row, 'Mean'),
+            'od_oct_s': get_val(od_row, 'S'),
+            'od_oct_n': get_val(od_row, 'N'),
+            'od_oct_i': get_val(od_row, 'I'),
+            'od_oct_t': get_val(od_row, 'T'),
+            # Predicted_Diagnosis (REFUGE2): praćeno PO PREGLEDU, ne po
+            # pacijentu i ne po slici. Prvo se pokuša forward-filled
+            # vrednost (prepisana sa prethodnog pregleda ako ova poseta
+            # nema sopstvenu sliku); ako ni to ne postoji (prva poseta
+            # bez slike), pada se na direktan lookup iz features_df.
             'od_diagnosis': determine_diagnosis(get_val(od_row, 'Diagnosis', is_float=False), od_feat),
+            # VF (vidno polje), 61 vrednost spojenih u JEDAN string
+            # razdvojen zarezima (raspored VF_0,VF_1,...,VF_60), umesto
+            # 61 zasebne kolone. None ako ova poseta nema VF test.
+            'od_vf': serialize_vf(od_row, vf_columns),
             
+            # Left Eye (OS)
             'os_iop': os_iop_val,
+            'os_oct_mean': get_val(os_row, 'Mean'),
+            'os_oct_s': get_val(os_row, 'S'),
+            'os_oct_n': get_val(os_row, 'N'),
+            'os_oct_i': get_val(os_row, 'I'),
+            'os_oct_t': get_val(os_row, 'T'),
             'os_diagnosis': determine_diagnosis(get_val(os_row, 'Diagnosis', is_float=False), os_feat),
+            'os_vf': serialize_vf(os_row, vf_columns),
             
             'physician_comment': chosen_comment,
             'therapy': chosen_therapy
@@ -298,6 +385,12 @@ def main():
 
 
     exams_table = pd.DataFrame(exam_rows)
+    # multimedia_table je već kompletna iz get_or_create_multimedia_id:
+    # jedan red po JEDINSTVENOJ slici, sa multimedia_id dodeljenim u
+    # redosledu prvog viđenja. NE sme se ponovo sortirati ovde, jer bi
+    # to promenilo redosled redova bez ažuriranja multimedia_id vrednosti
+    # koje su exam_rows VEĆ zapamtili (od_multimedia_id/os_multimedia_id) —
+    # sortiranje bi raskinulo tu vezu.
     multimedia_table = pd.DataFrame(multimedia_rows)
 
     print("Merging and formatting final tables...")
