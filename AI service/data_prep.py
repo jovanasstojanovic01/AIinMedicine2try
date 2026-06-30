@@ -282,35 +282,13 @@ def main():
             'patient_id': int(subj_id),
             'visit_number': int(visit_num),
             'exam_date': exam_date_str,
-
-            # FK ka multimedia tabeli — NULL ako ova poseta (i nijedna
-            # prethodna poseta istog oka) nema sliku. Smer FK je OVDE
-            # (exams -> multimedia), jer je relacija stvarno 1:N (jedna
-            # slika može biti referisana sa više pregleda), ne obrnuto.
             'od_multimedia_id': od_multimedia_id,
             'os_multimedia_id': os_multimedia_id,
 
-            # Right Eye (OD)
             'od_iop': od_iop_val,
-            'od_oct_mean': get_val(od_row, 'Mean'),
-            'od_oct_s': get_val(od_row, 'S'),
-            'od_oct_n': get_val(od_row, 'N'),
-            'od_oct_i': get_val(od_row, 'I'),
-            'od_oct_t': get_val(od_row, 'T'),
-            # Predicted_Diagnosis (REFUGE2): praćeno PO PREGLEDU, ne po
-            # pacijentu i ne po slici. Prvo se pokuša forward-filled
-            # vrednost (prepisana sa prethodnog pregleda ako ova poseta
-            # nema sopstvenu sliku); ako ni to ne postoji (prva poseta
-            # bez slike), pada se na direktan lookup iz features_df.
             'od_diagnosis': determine_diagnosis(get_val(od_row, 'Diagnosis', is_float=False), od_feat),
             
-            # Left Eye (OS)
             'os_iop': os_iop_val,
-            'os_oct_mean': get_val(os_row, 'Mean'),
-            'os_oct_s': get_val(os_row, 'S'),
-            'os_oct_n': get_val(os_row, 'N'),
-            'os_oct_i': get_val(os_row, 'I'),
-            'os_oct_t': get_val(os_row, 'T'),
             'os_diagnosis': determine_diagnosis(get_val(os_row, 'Diagnosis', is_float=False), os_feat),
             
             'physician_comment': chosen_comment,
@@ -320,12 +298,6 @@ def main():
 
 
     exams_table = pd.DataFrame(exam_rows)
-    # multimedia_table je već kompletna iz get_or_create_multimedia_id:
-    # jedan red po JEDINSTVENOJ slici, sa multimedia_id dodeljenim u
-    # redosledu prvog viđenja. NE sme se ponovo sortirati ovde, jer bi
-    # to promenilo redosled redova bez ažuriranja multimedia_id vrednosti
-    # koje su exam_rows VEĆ zapamtili (od_multimedia_id/os_multimedia_id) —
-    # sortiranje bi raskinulo tu vezu.
     multimedia_table = pd.DataFrame(multimedia_rows)
 
     print("Merging and formatting final tables...")
