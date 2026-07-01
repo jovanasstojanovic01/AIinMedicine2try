@@ -31,28 +31,12 @@
   h3 { margin-bottom: 12px; font-weight: 500; }
 }
 
-
-
-// Stilovi za istoriju pregleda sa slike image_7be9d9.png
-// .timeline-panel {
-//   h3 {
-//     margin: 0 0 16px 0;
-//     font-size: 16px;
-//     font-weight: 500;
-//     text-transform: uppercase;
-//     letter-spacing: 0.5px;
-//     color: #444;
-//   }
-// }
-
-
-
 // Popravka i stilizacija Angular Material liste
-// Fokusiramo se isključivo na veličinu, padding i razmake (za dark/light kompatibilnost)
 .timeline-item {
   margin-bottom: 16px; // Razmak između kartica
   cursor: pointer;
-  transition: transform 0.2s ease-in-out;
+  transition: transform 0.2s ease-in-out, background-color 0.2s ease;
+  border-left: 4px solid transparent; // Rezervišemo prostor za liniju sa strane da UI ne "skače"
   
   // Geometrija i definisanje prostora
   min-height: 85px !important; 
@@ -74,20 +58,43 @@
     justify-content: center;
   }
 
-  // 3. Prostor za radio dugme (Desno)
+  // 3. Prostor za radio dugme / pseudo-checkbox (Desno)
   ::v-deep .mdc-list-item__end {
     margin-left: auto !important;
     padding-right: 20px !important; // Uvlačenje od desne ivice kartice
     align-self: center;
   }
 
-  // Efekat podizanja na hover (radi podjednako dobro u obe teme)
+  // Efekat podizanja na hover
   &:hover {
     transform: translateY(-2px);
   }
+
+  // ==========================================================================
+  // KLJUČNA IZMENA: Pravo rešenje za promenu UI-ja kada je radio button aktivan
+  // ==========================================================================
+  
+  // Kada Angular Material doda klasu za selektovano stanje na mat-list-option
+  &.mat-mdc-list-option-selected, &.mat-selected {
+    background-color: rgba(63, 81, 181, 0.12) !important; /* Blaga plava pozadina za aktivni red */
+    border-left: 5px solid #3f51b5 !important;            /* Izražena primarna linija sa leve strane */
+
+    // Prisilio menjamo boju unutrašnjeg Material pseudo-kružića u aktivnu primarnu boju
+    ::v-deep .mat-pseudo-checkbox-checked,
+    ::v-deep .mat-mdc-pseudo-checkbox-checked,
+    ::v-deep .mdc-checkbox__native-control:checked ~ .mdc-checkbox__background {
+      background-color: #3f51b5 !important;
+      border-color: #3f51b5 !important;
+    }
+    
+    // Ako se koristi ugrađena ikonica kvačice unutar kružića, bojimo je u belo
+    ::v-deep .mat-pseudo-checkbox-minimal.mat-pseudo-checkbox-checked::after {
+      color: #fff !important;
+    }
+  }
 }
 
-// Tekstualni stilovi bez fiksnih boja (koriste nasleđene boje iz teme)
+// Tekstualni stilovi bez fiksnih boja
 .timeline-title {
   font-size: 15px;
   font-weight: 500;
@@ -99,7 +106,7 @@
   font-size: 13px;
   font-weight: 400;
   margin: 0;
-  opacity: 0.7; // Umesto fiksne sive, koristimo prozirnost koja radi i na tamnoj i na svetloj pozadini
+  opacity: 0.7;
 }
 
 .details-panel {
@@ -121,7 +128,7 @@
   h3 { margin: 0; font-weight: 500; }
 }
 
-// KLJUČNO: Stilovi za Side-by-side slike i masku preko slike
+// Stilovi za Side-by-side slike i masku preko slike
 .eye-images-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -134,9 +141,9 @@
   h4 { margin: 0 0 12px 0; font-weight: 500; opacity: 0.9; }
   
   .wrapper {
-    position: relative; // Omogućava apsolutno pozicioniranje maske unutar ovoga
+    position: relative;
     width: 100%;
-    aspect-ratio: 4/3;
+    // aspect-ratio: 4/3;
     border-radius: 8px;
     overflow: hidden;
     background-color: #000;
@@ -148,7 +155,6 @@
       object-fit: cover;
     }
 
-    // Poluprovidna maska koja se lepi preko slike
     .image-overlay {
       position: absolute;
       top: 0;
@@ -158,7 +164,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      mix-blend-mode: multiply; // Čini da se maska lepo stapa sa strukturama oka
+      mix-blend-mode: multiply;
       transition: all 0.3s ease;
 
       .overlay-label {
@@ -170,7 +176,6 @@
       }
       
       &.alert {
-        // Efekat pulsiranja za rizične zone glaukoma
         border: 4px solid var(--mat-sys-tertiary);
         box-sizing: border-box;
       }

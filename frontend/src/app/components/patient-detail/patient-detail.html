@@ -7,19 +7,19 @@
   <mat-card class="patient-header-card" *ngIf="pacijent">
     <div class="patient-info-grid">
       <div>
-        <small>Pacijent (OftaScan Sistem)</small>
+        <small>Patient (OftaScan Sistem)</small>
         <h2>{{ pacijent.first_name }} {{ pacijent.last_name }}</h2>
       </div>
       <div>
-        <small>Datum rođenja</small>
-        <p>{{ pacijent.birth_date }} (Pol: {{ pacijent.gender }})</p>
+        <small>Date of Birth</small>
+        <p>{{ pacijent.birth_date }} (SEX: {{ pacijent.gender }})</p>
       </div>
       <div>
-        <small>Glavna Dijagnoza</small>
+        <small>Glaucoma Category</small>
         <p class="text-warn"><strong>{{ pacijent.glaucoma_category }}</strong></p>
       </div>
       <div>
-        <small>Centralna debljina rožnjače</small>
+        <small>CCT</small>
         <p><strong>{{ pacijent.cct }} µm</strong></p>
       </div>
     </div>
@@ -28,22 +28,26 @@
   <div class="split-layout" *ngIf="pacijent">
     
     <div class="timeline-panel">
-      <h3>Istorija pregleda</h3>
+      <h3>Exam History</h3>
       
       <div *ngIf="pregledi.length === 0" class="text-muted-info">
         Nema zabeleženih pregleda za ovog pacijenta.
       </div>
-      
-      <mat-selection-list [multiple]="false" *ngIf="pregledi.length > 0">
-        <mat-list-option *ngFor="let p of pregledi; let i = index" 
-                         [selected]="izabraniPregled && p.id === izabraniPregled.id"
-                         (click)="selektujPregled(p)"
-                         class="timeline-item">
-          <mat-icon matListIcon>insights</mat-icon>
-          <div matLine class="timeline-title">
-            <strong>Poseta br. {{ pregledi.length - i }}</strong>
+
+      <mat-selection-list
+        #listaPregleda
+        [multiple]="false"
+        (selectionChange)="onSelectionChange($event)"
+        *ngIf="pregledi.length > 0">
+        <mat-list-option
+          *ngFor="let p of pregledi; let i = index"
+          [value]="p"
+          class="timeline-item">
+          <mat-icon matListItemIcon>insights</mat-icon>
+          <div matListItemLine class="timeline-title">
+            <strong>Visit no. {{ pregledi.length - i }}</strong>
           </div>
-          <div matLine class="timeline-sub">Datum: {{ p.exam_date || 'Nije unet' }}</div>
+          <div matListItemLine class="timeline-sub">Date: {{ p.exam_date || 'Empty' }}</div>
         </mat-list-option>
       </mat-selection-list>
     </div>
@@ -52,81 +56,78 @@
       <mat-card class="display-card">
         
         <div class="details-header">
-          <h3>Detalji pregleda (Datum: {{ izabraniPregled.exam_date || 'Nije unet' }})</h3>
+          <h3>Exam Detils (Date: {{ izabraniPregled.exam_date || 'Empty' }})</h3>
           
           <button mat-flat-button 
-                  *ngIf="izabraniPregled.mask_path"
+                  *ngIf="getMaskPath(izabraniPregled.od_multimedija).length!=0 || getMaskPath(izabraniPregled.os_multimedija).length!=0"
                   [color]="prikaziMasku ? 'accent' : 'primary'" 
                   (click)="toggleMaska()">
             <mat-icon>{{ prikaziMasku ? 'layers_clear' : 'layers' }}</mat-icon>
-            {{ prikaziMasku ? 'Sakrij masku' : 'Prikaži masku segmentacije' }}
+            {{ prikaziMasku ? 'Hide Mask' : 'Show Mask' }}
           </button>
         </div>
 
         <div class="eye-images-grid">
           
           <div class="image-container">
-            <h4>Desno Oko (OD)</h4>
+            <h4>Left Eye (OS)</h4>
             <div class="wrapper">
-              <img *ngIf="izabraniPregled.image_od_path" 
-                   [src]="mediaUrl + '/image/' + izabraniPregled.image_od_path" 
-                   alt="Desno oko fundus">
-              
-              <div *ngIf="!izabraniPregled.image_od_path" class="no-image-placeholder">
+              <img *ngIf="izabraniPregled.os_multimedija && izabraniPregled.os_multimedija.image_path" 
+                   [src]="mediaUrl + '/image/' + izabraniPregled.os_multimedija.image_path" 
+                   alt="Left Eye Fundus">
+              <div *ngIf="!izabraniPregled.os_multimedija || !izabraniPregled.os_multimedija.image_path" class="no-image-placeholder">
                 <mat-icon>image_not_supported</mat-icon>
-                <p>Nema fundus slike za OD.</p>
+                <p>No record.</p>
               </div>
-
-              <img *ngIf="prikaziMasku && izabraniPregled.mask_path" 
-                   [src]="mediaUrl + '/mask/' + izabraniPregled.mask_path" 
-                   alt="UNet Maska OD" 
+              <img *ngIf="prikaziMasku && getMaskPath(izabraniPregled.os_multimedija).length!=0" 
+                   [src]="getMaskPath(izabraniPregled.os_multimedija)" 
+                   alt="UNet Maska OS" 
                    class="image-overlay-mask" />
             </div>
-            
             <div class="params-box">
-              <p>Intraokularni pritisak (IOP): <strong>{{ izabraniPregled.iop_od || 'N/A' }} mmHg</strong></p>
-              <p>CDR odnos (Cup-to-Disc): <strong>{{ izabraniPregled.cdr_od || 'N/A' }}</strong></p>
-              <p>Vidno polje MD (Mean Deviation): <strong>{{ izabraniPregled.md_od || 'N/A' }} dB</strong></p>
-              <p>Vidno polje PSD: <strong>{{ izabraniPregled.psd_od || 'N/A' }} dB</strong></p>
+              <p>Diagnosis: <strong>{{ izabraniPregled.os_diagnosis || 'N/A' }} </strong></p>
+              <p>IOP: <strong>{{ izabraniPregled.os_iop || 'N/A' }}</strong></p>  
             </div>
           </div>
 
           <div class="image-container">
-            <h4>Levo Oko (OS)</h4>
+            <h4>Right Eye (OD)</h4>
             <div class="wrapper">
-              <img *ngIf="izabraniPregled.image_os_path" 
-                   [src]="mediaUrl + '/image/' + izabraniPregled.image_os_path" 
-                   alt="Levo oko fundus">
-              
-              <div *ngIf="!izabraniPregled.image_os_path" class="no-image-placeholder">
+              <img *ngIf="izabraniPregled.od_multimedija && izabraniPregled.od_multimedija.image_path" 
+                   [src]="mediaUrl + '/image/' + izabraniPregled.od_multimedija.image_path" 
+                   alt="Right Eye Fundus">
+              <div *ngIf="!izabraniPregled.od_multimedija || !izabraniPregled.od_multimedija.image_path" class="no-image-placeholder">
                 <mat-icon>image_not_supported</mat-icon>
-                <p>Nema fundus slike za OS.</p>
+                <p>No record.</p>
               </div>
+              <img *ngIf="prikaziMasku && getMaskPath(izabraniPregled.od_multimedija).length!=0" 
+                   [src]="getMaskPath(izabraniPregled.od_multimedija)" 
+                   alt="UNet Maska OD" 
+                   class="image-overlay-mask" />
+            </div>
+            <div class="params-box">
+              <p>Diagnosis: <strong>{{ izabraniPregled.od_diagnosis || 'N/A' }} </strong></p>
+              <p>IOP: <strong>{{ izabraniPregled.od_iop || 'N/A' }}</strong></p>
             </div>
             
-            <div class="params-box">
-              <p>Intraokularni pritisak (IOP): <strong>{{ izabraniPregled.iop_os || 'N/A' }} mmHg</strong></p>
-              <p>CDR odnos (Cup-to-Disc): <strong>{{ izabraniPregled.cdr_os || 'N/A' }}</strong></p>
-              <p>Vidno polje MD (Mean Deviation): <strong>{{ izabraniPregled.md_os || 'N/A' }} dB</strong></p>
-              <p>Vidno polje PSD: <strong>{{ izabraniPregled.psd_os || 'N/A' }} dB</strong></p>
-            </div>
           </div>
 
         </div>
 
         <div class="full-width-report">
-          <h3>Klinički nalaz i mišljenje lekara</h3>
-          
+          <h3>Doctors Opinion</h3>
           <div class="report-card">
             <p class="report-text">
-              {{ izabraniPregled.comment || izabraniPregled.description || 'Nema unetog tekstualnog nalaza ili komentara za ovaj pregled.' }}
+              {{ izabraniPregled.comment || izabraniPregled.physician_comment || 'No record.' }}
             </p>
           </div>
-
-          <div *ngIf="izabraniPregled.mask_path" class="ai-status-bar">
-            <mat-icon>psychology</mat-icon>
-            <span><strong>OftaScan AI Modul:</strong> Neuralna mreža (UNet) je uspešno markirala i segmentisala strukturu optičkog diska na desnom oku. Koristite dugme "Prikaži masku" za vizuelno preklapanje slojeva.</span>
+          <h3>Therapy</h3>
+          <div class="report-card">
+            <p class="report-text">
+              {{ izabraniPregled.therapy}}
+            </p>
           </div>
+          
         </div>
 
       </mat-card>
