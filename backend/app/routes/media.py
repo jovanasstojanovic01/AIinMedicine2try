@@ -1,7 +1,6 @@
 
 import os
-from urllib import request
-from flask import Blueprint, current_app, send_from_directory
+from flask import Blueprint, current_app, send_from_directory,request
 from app.utils.media_helpers import get_mask_filename
 from app.utils.responses import error, not_found
 from app.models.db_models import Pregled
@@ -33,7 +32,7 @@ def download_visit_perimetry(exam_id):
     Ruta koja vraća XML fajl perimetrije za konkretan pregled na osnovu parametra 'eye'.
     Primer: GET /api/visits/12/perimetry/download?eye=OD
     """
-    eye = request.args.get("eye", "OD").upper()
+    eye = request.args.get("eye", "").upper()
     if eye not in ["OD", "OS"]:
         return error("Parametar 'eye' mora biti 'OD' ili 'OS'.", 400)
 

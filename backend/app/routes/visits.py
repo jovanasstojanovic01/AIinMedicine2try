@@ -21,7 +21,7 @@ def evaluate_visit_progression(exam_id):
     Pokreće novi GRU model koji na osnovu istorije poseta (zaključno sa ovom)
     predviđa koliki će biti VF_mean na sledećoj poseti.
     """
-    eye = request.args.get("eye", "OD").upper()
+    eye = request.args.get("eye", "").upper()
     if eye not in ["OD", "OS"]:
         return error("Parametar 'eye' mora biti 'OD' ili 'OS'.", 400)
 
@@ -197,60 +197,82 @@ def upload_visit_images(exam_id):
 
     try:
         
-        multimedija = PregledMultimedija.query.filter_by(exam_id=exam_id).first()
-        if not multimedija:
-            multimedija = PregledMultimedija(exam_id=exam_id)
-            db.session.add(multimedija)
-
-        
         if img_od and img_od.filename != '':
             img_bytes = img_od.read()
+            
             ml_res_od = ml_service.predict_glaucoma_segmentation(img_bytes)
+            
             
             unikatno_ime_od = generisi_jedinstveno_ime(img_od.filename)
             img_path_od = os.path.join(current_app.config['IMAGES_FOLDER'], unikatno_ime_od)
             img_od.seek(0)
             img_od.save(img_path_od)
 
+            
             mask_name_od = get_mask_filename(unikatno_ime_od)
+            mask_path_od = os.path.join(current_app.config['MASKS_FOLDER'], mask_name_od)
             if "mask_bytes" in ml_res_od:
-                with open(os.path.join(current_app.config['MASKS_FOLDER'], mask_name_od), "wb") as f:
+                with open(mask_path_od, "wb") as f:
                     f.write(ml_res_od["mask_bytes"])
 
-            multimedija.od_image = unikatno_ime_od
-            multimedija.od_vcdr = ml_res_od["vcdr"]
-            multimedija.od_hcdr = ml_res_od["hcdr"]
-            multimedija.od_acdr = ml_res_od["acdr"]
-            multimedija.od_rim_area_pixels = float(ml_res_od["rim_area"])
+            
+            if not pregled.od_multimedija:
+                m_od = PregledMultimedija()
+                db.session.add(m_od)
+                db.session.flush() 
+                pregled.od_multimedia_id = m_od.multimedia_id
+            else:
+                m_od = pregled.od_multimedija
+
+            m_od.image_path = unikatno_ime_od
+            m_od.vcdr = ml_res_od["vcdr"]
+            m_od.hcdr = ml_res_od["hcdr"]
+            m_od.acdr = ml_res_od["acdr"]
+            m_od.rim_area_pixels = float(ml_res_od["rim_area"])
+            pregled.od_diagnosis = ml_res_od["status"]
 
         
         if img_os and img_os.filename != '':
             img_bytes = img_os.read()
+            
             ml_res_os = ml_service.predict_glaucoma_segmentation(img_bytes)
+            
             
             unikatno_ime_os = generisi_jedinstveno_ime(img_os.filename)
             img_path_os = os.path.join(current_app.config['IMAGES_FOLDER'], unikatno_ime_os)
             img_os.seek(0)
             img_os.save(img_path_os)
 
+            
             mask_name_os = get_mask_filename(unikatno_ime_os)
+            mask_path_os = os.path.join(current_app.config['MASKS_FOLDER'], mask_name_os)
             if "mask_bytes" in ml_res_os:
-                with open(os.path.join(current_app.config['MASKS_FOLDER'], mask_name_os), "wb") as f:
+                with open(mask_path_os, "wb") as f:
                     f.write(ml_res_os["mask_bytes"])
 
-            multimedija.os_image = unikatno_ime_os
-            multimedija.os_vcdr = ml_res_os["vcdr"]
-            multimedija.os_hcdr = ml_res_os["hcdr"]
-            multimedija.os_acdr = ml_res_os["acdr"]
-            multimedija.os_rim_area_pixels = float(ml_res_os["rim_area"])
+            
+            if not pregled.os_multimedija:
+                m_os = PregledMultimedija()
+                db.session.add(m_os)
+                db.session.flush()
+                pregled.os_multimedia_id = m_os.multimedia_id
+            else:
+                m_os = pregled.os_multimedija
+
+            m_os.image_path = unikatno_ime_os
+            m_os.mask_path = mask_name_os
+            m_os.vcdr = ml_res_os["vcdr"]
+            m_os.hcdr = ml_res_os["hcdr"]
+            m_os.acdr = ml_res_os["acdr"]
+            m_os.rim_area_pixels = float(ml_res_os["rim_area"])
+            pregled.os_diagnosis = ml_res_os["status"]
 
         db.session.commit()
-        return ok(visit_schema.dump(pregled), "Slike uspešno dodate i analizirane kroz UNet.")
+        return ok(visit_schema.dump(pregled), "Slike za OD/OS uspešno dodate i analizirane kroz UNet.")
 
     except Exception as e:
         db.session.rollback()
         return error(f"Greška tokom obrade medija: {str(e)}", 500)
-
 
 @bp.get("")
 def list_all_visits():
@@ -316,32 +338,32 @@ def get_visit(exam_id):
 
 
 
-def sacuvaj_i_analiziraj_sliku(img_file):
-    if not img_file or img_file.filename == '':
-        return None, None, 0.0
+# def sacuvaj_i_analiziraj_sliku(img_file):
+#     if not img_file or img_file.filename == '':
+#         return None, None, 0.0
 
-    img_bytes = img_file.read()
-    ml_res = ml_service.predict_glaucoma_segmentation(img_bytes)
+#     img_bytes = img_file.read()
+#     ml_res = ml_service.predict_glaucoma_segmentation(img_bytes)
     
-    unikatno_ime = generisi_jedinstveno_ime(img_file.filename)
+#     unikatno_ime = generisi_jedinstveno_ime(img_file.filename)
 
-    img_path = os.path.join(current_app.config['IMAGES_FOLDER'], unikatno_ime)
-    img_file.seek(0)
-    img_file.save(img_path)
-
-    
-
-
-    mask_filename = get_mask_filename(unikatno_ime)
-    mask_path = os.path.join(current_app.config['MASKS_FOLDER'], mask_filename)
+#     img_path = os.path.join(current_app.config['IMAGES_FOLDER'], unikatno_ime)
+#     img_file.seek(0)
+#     img_file.save(img_path)
 
     
+
+
+#     mask_filename = get_mask_filename(unikatno_ime)
+#     mask_path = os.path.join(current_app.config['MASKS_FOLDER'], mask_filename)
+
     
-    if "mask_bytes" in ml_res:
-        with open(mask_path, "wb") as f:
-            f.write(ml_res["mask_bytes"])
     
-    return unikatno_ime, ml_res["vcdr"], ml_res.get("status", "")
+    # if "mask_bytes" in ml_res:
+    #     with open(mask_path, "wb") as f:
+    #         f.write(ml_res["mask_bytes"])
+    
+    # return unikatno_ime, ml_res["vcdr"], ml_res.get("status", "")
 
 
 

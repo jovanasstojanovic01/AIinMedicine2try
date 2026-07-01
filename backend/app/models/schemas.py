@@ -50,10 +50,8 @@ class PregledSchema(SQLAlchemyAutoSchema):
     )
     
     
-    multimedija = fields.Nested(
-        PregledMultimedijaSchema, 
-        exclude=("multimedia_id", "exam_id")
-    )
+    od_multimedija = fields.Nested(PregledMultimedijaSchema, allow_none=True)
+    os_multimedija = fields.Nested(PregledMultimedijaSchema, allow_none=True)
 
 
 

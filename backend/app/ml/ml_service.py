@@ -35,11 +35,12 @@ class MLInferenceService:
         
         
         
-        self.gru_model = GlaucomaVFProgressionGRU(input_size=7, hidden_size=64, num_layers=1, dropout=0.3).to(self.device)
+        self.gru = GlaucomaVFProgressionGRU(input_size=7, hidden_size=64, num_layers=1, dropout=0.3).to(self.device)
         gru_path = current_app.config['GRU_WEIGHTS']
         if os.path.exists(gru_path):
-            self.gru_model.load_state_dict(torch.load(gru_path, map_location=self.device))
-            self.gru_model.eval()
+            self.gru.load_state_dict(torch.load(gru_path, map_location=self.device))
+            self.gru.eval()
+        
 
         
     import torchvision.transforms as T
@@ -97,20 +98,31 @@ class MLInferenceService:
                 raise ValueError("Pacijent mora imati barem jednu posetu za predikciju.")
 
             privremene_posete = []
-            
-            for p in istorija_pregleda:
-                
+            istorija_sortirano = sorted(istorija_pregleda, key=lambda x: x.visit_number)
+        
+            prethodni_datum = None
+            for p in istorija_sortirano:
+                if prethodni_datum is None or p.exam_date is None:
+                    interval_years = 0.0
+                else:
+                    razlika_dana = (p.exam_date - prethodni_datum).days
+                    interval_years = float(razlika_dana / 365.25)
+                prethodni_datum = p.exam_date
                 sirovi_iop = p.od_iop if eye == "OD" else p.os_iop
                 
                 
                 vcdr, hcdr, acdr, rim_area = 0.0, 0.0, 0.0, 0.0
-                if p.multimedija:
-                    vcdr = p.multimedija.od_vcdr if eye == "OD" else p.multimedija.os_vcdr
-                    hcdr = p.multimedija.od_hcdr if eye == "OD" else p.multimedija.os_hcdr
-                    acdr = p.multimedija.od_acdr if eye == "OD" else p.multimedija.os_acdr
-                    rim_area = p.multimedija.od_rim_area_pixels if eye == "OD" else p.multimedija.os_rim_area_pixels
-
+            
                 
+                m_obj = p.od_multimedija if eye == "OD" else p.os_multimedija
+                
+                if m_obj:
+                    
+                    vcdr = m_obj.vcdr
+                    hcdr = m_obj.hcdr
+                    acdr = m_obj.acdr
+                    rim_area = m_obj.rim_area_pixels
+
                 json_str = p.od_vf_matrix if eye == "OD" else p.os_vf_matrix
                 if json_str:
                     vf_niz = json.loads(json_str)
@@ -118,7 +130,7 @@ class MLInferenceService:
                     vf_mean = np.mean(validne_tacke) if validne_tacke else 0.0
                 else:
                     vf_mean = 0.0
-
+                print(vf_mean)
                 
                 iop_corrected = float(correct_IOP(sirovi_iop or 0.0, cct_pacijenta or 540.0))
 
@@ -129,15 +141,15 @@ class MLInferenceService:
                     float(hcdr or 0.0),
                     float(acdr or 0.0),
                     float(rim_area or 0.0),
-                    float(vf_mean)
+                    float(vf_mean),
+                    float(interval_years)
                 ])
 
-            
+            sirovi_niz = np.array(privremene_posete, dtype=np.float32)
+            skalirani_niz = self.scaler.transform(sirovi_niz)
             broj_poseta = len(privremene_posete)
-            
-            
-            
-            x_tensor = torch.tensor([privremene_posete], dtype=torch.float32).to(self.device)
+
+            x_tensor = torch.tensor([skalirani_niz], dtype=torch.float32).to(self.device)
             
             lengths_tensor = torch.tensor([broj_poseta], dtype=torch.int64).to(self.device)
 
